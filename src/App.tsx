@@ -126,6 +126,7 @@ function DemoRoutes() {
     </SelectedClassProvider>
   );
 }
+import DemoLearnerRoutes from '@/pages/demo-learner/DemoLearnerRoutes';
 
 function App() {
   return (
@@ -134,6 +135,7 @@ function App() {
       <Route path="/teacher/*" element={<TeacherRoutes />} />
       <Route path="/learner/*" element={<LearnerRoutes />} />
       <Route path="/demo/*" element={<DemoRoutes />} />
+      <Route path="/demo-learner/*" element={<DemoLearnerRoutes />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
