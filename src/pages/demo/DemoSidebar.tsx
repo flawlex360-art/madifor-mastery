@@ -12,12 +12,12 @@ interface SidebarLink {
 // In Demo, some go to /demo/..., others go to /teacher/... (which will redirect to login)
 const demoLinks: SidebarLink[] = [
   { to: '/demo/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-  { to: '/teacher/curriculum', label: 'Curriculum', icon: <Map className="w-5 h-5" /> },
-  { to: '/teacher/questions', label: 'Questions', icon: <BookOpen className="w-5 h-5" /> },
-  { to: '/teacher/analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" /> },
-  { to: '/teacher/reviews', label: 'Review Queue', icon: <RotateCcw className="w-5 h-5" /> },
-  { to: '/teacher/trends', label: 'Trends', icon: <TrendingUp className="w-5 h-5" /> },
-  { to: '/teacher/misconceptions', label: 'Misconceptions', icon: <AlertCircle className="w-5 h-5" /> },
+  { to: '/demo/curriculum', label: 'Curriculum', icon: <Map className="w-5 h-5" /> },
+  { to: '/demo/questions', label: 'Questions', icon: <BookOpen className="w-5 h-5" /> },
+  { to: '/demo/analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" /> },
+  { to: '/demo/reviews', label: 'Review Queue', icon: <RotateCcw className="w-5 h-5" /> },
+  { to: '/demo/trends', label: 'Trends', icon: <TrendingUp className="w-5 h-5" /> },
+  { to: '/demo/misconceptions', label: 'Misconceptions', icon: <AlertCircle className="w-5 h-5" /> },
 ];
 
 import { BarChart3 } from 'lucide-react'; // Fix missing import

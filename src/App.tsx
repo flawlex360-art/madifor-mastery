@@ -99,6 +99,12 @@ import DemoAppShell from '@/pages/demo/DemoAppShell';
 import DemoDashboardPage from '@/pages/demo/DemoDashboardPage';
 import DemoClassManagementPage from '@/pages/demo/DemoClassManagementPage';
 import DemoSettingsPage from '@/pages/demo/DemoSettingsPage';
+import DemoCurriculumPage from '@/pages/demo/DemoCurriculumPage';
+import DemoQuestionBuilderPage from '@/pages/demo/DemoQuestionBuilderPage';
+import DemoAnalyticsPage from '@/pages/demo/DemoAnalyticsPage';
+import DemoReviewQueuePage from '@/pages/demo/DemoReviewQueuePage';
+import DemoTrendsPage from '@/pages/demo/DemoTrendsPage';
+import DemoMisconceptionsPage from '@/pages/demo/DemoMisconceptionsPage';
 
 function DemoRoutes() {
   return (
@@ -106,6 +112,12 @@ function DemoRoutes() {
       <DemoAppShell>
         <Routes>
           <Route path="dashboard" element={<DemoDashboardPage />} />
+          <Route path="curriculum" element={<DemoCurriculumPage />} />
+          <Route path="questions" element={<DemoQuestionBuilderPage />} />
+          <Route path="analytics" element={<DemoAnalyticsPage />} />
+          <Route path="reviews" element={<DemoReviewQueuePage />} />
+          <Route path="trends" element={<DemoTrendsPage />} />
+          <Route path="misconceptions" element={<DemoMisconceptionsPage />} />
           <Route path="classes" element={<DemoClassManagementPage />} />
           <Route path="settings" element={<DemoSettingsPage />} />
           <Route path="*" element={<Navigate to="dashboard" replace />} />

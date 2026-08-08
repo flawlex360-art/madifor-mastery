@@ -153,3 +153,139 @@ export const getDemoDrillDown = (learnerId: string) => {
     };
   });
 };
+
+// --- CURRICULUM MOCK DATA ---
+export const DEMO_SUBTOPICS = [
+  { id: 'st1', topic_id: 't1', name: 'States of Matter', code: 'SCI-B8-1.1' },
+  { id: 'st2', topic_id: 't1', name: 'Changes in State', code: 'SCI-B8-1.2' },
+  { id: 'st3', topic_id: 't2', name: 'Plant vs Animal Cells', code: 'SCI-B8-2.1' },
+];
+
+export const DEMO_LEARNING_OBJECTIVES = [
+  { id: 'lo1', subtopic_id: 'st1', description: 'Identify the three states of matter.', code: 'LO-1.1.1' },
+  { id: 'lo2', subtopic_id: 'st1', description: 'Describe particle arrangement in solids.', code: 'LO-1.1.2' },
+  { id: 'lo3', subtopic_id: 'st2', description: 'Explain melting and freezing.', code: 'LO-1.2.1' },
+];
+
+// --- QUESTIONS MOCK DATA ---
+export const DEMO_QUESTIONS = [
+  {
+    id: 'q1',
+    topic_id: 't1',
+    subtopic_id: 'st1',
+    type: 'multiple_choice',
+    difficulty: 'easy',
+    text: 'What is the state of matter that has a definite volume but no definite shape?',
+    options: { a: 'Solid', b: 'Liquid', c: 'Gas', d: 'Plasma' },
+    correct_answer: 'b',
+    status: 'published',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'q2',
+    topic_id: 't2',
+    type: 'open_ended',
+    difficulty: 'medium',
+    text: 'Explain the primary function of the cell membrane in an animal cell.',
+    sample_answer: 'The cell membrane controls what enters and exits the cell, acting as a selectively permeable barrier.',
+    status: 'published',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'q3',
+    topic_id: 't3',
+    type: 'multiple_choice',
+    difficulty: 'hard',
+    text: 'If the net force on an object is zero, what can be said about its motion?',
+    options: { a: 'It must be at rest', b: 'It is accelerating', c: 'It is moving with constant velocity or is at rest', d: 'It is decelerating' },
+    correct_answer: 'c',
+    status: 'draft',
+    created_at: new Date().toISOString()
+  }
+];
+
+// --- ANALYTICS MOCK DATA ---
+export const getDemoAnalytics = () => {
+  return DEMO_QUESTIONS.map(q => ({
+    question_id: q.id,
+    question_text: q.text,
+    topic_name: DEMO_TOPICS.find(t => t.id === q.topic_id)?.name || '',
+    difficulty: q.difficulty,
+    type: q.type,
+    attempts: Math.floor(Math.random() * 50) + 20,
+    success_rate: Math.floor(Math.random() * 40) + 40,
+    avg_time_seconds: Math.floor(Math.random() * 60) + 10,
+    common_wrong_answer: q.type === 'multiple_choice' ? 'a' : null
+  }));
+};
+
+// --- REVIEW QUEUE MOCK DATA ---
+export const getDemoReviewQueue = () => {
+  const now = new Date();
+  return [
+    {
+      id: 'rq1',
+      learner_id: 'l1',
+      learner_name: 'Kwame Asante',
+      question_id: 'q2',
+      question_text: 'Explain the primary function of the cell membrane in an animal cell.',
+      student_answer: 'It protects the cell and lets things in and out.',
+      ai_score: 80,
+      ai_feedback: 'Good answer, though it could use more scientific terminology like "selectively permeable".',
+      status: 'pending',
+      submitted_at: now.toISOString()
+    },
+    {
+      id: 'rq2',
+      learner_id: 'l12',
+      learner_name: 'Akosua Serwaa',
+      question_id: 'q2',
+      question_text: 'Explain the primary function of the cell membrane in an animal cell.',
+      student_answer: 'It is the brain of the cell.',
+      ai_score: 0,
+      ai_feedback: 'Incorrect. The nucleus acts as the "brain". The membrane is the outer boundary.',
+      status: 'pending',
+      submitted_at: new Date(now.getTime() - 3600000).toISOString()
+    }
+  ];
+};
+
+// --- TRENDS MOCK DATA ---
+export const getDemoTrends = () => {
+  const dates = [];
+  let currentPct = 40;
+  for (let i = 30; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dates.push({
+      date: d.toISOString().split('T')[0],
+      avg_mastery: currentPct
+    });
+    // Upward trend with slight randomness
+    currentPct += (Math.random() * 3) - 0.5;
+    if (currentPct > 100) currentPct = 100;
+  }
+  return dates;
+};
+
+// --- MISCONCEPTIONS MOCK DATA ---
+export const getDemoMisconceptions = () => {
+  return [
+    {
+      id: 'm1',
+      topic_name: 'Force and Motion',
+      misconception: 'Heavier objects always fall faster than lighter objects in a vacuum.',
+      occurrences: 8,
+      affected_learners: ['Kwabena Darko', 'Akosua Serwaa', 'Afia Pokuaa'],
+      ai_remediation: 'Demonstrate Galileo\'s leaning tower experiment concept using a feather and a hammer dropped on the moon (video). Explain how air resistance is the differentiating factor on Earth, not mass.'
+    },
+    {
+      id: 'm2',
+      topic_name: 'Properties of Matter',
+      misconception: 'Particles in a solid are completely stationary.',
+      occurrences: 5,
+      affected_learners: ['Kwadwo Frimpong', 'Adwoa Mansa'],
+      ai_remediation: 'Use a vibrating phone on a table as an analogy. The phone stays in place (fixed shape/volume) but its parts are vibrating rapidly.'
+    }
+  ];
+};
