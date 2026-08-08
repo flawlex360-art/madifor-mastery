@@ -95,12 +95,33 @@ function LearnerRoutes() {
   );
 }
 
+import DemoAppShell from '@/pages/demo/DemoAppShell';
+import DemoDashboardPage from '@/pages/demo/DemoDashboardPage';
+import DemoClassManagementPage from '@/pages/demo/DemoClassManagementPage';
+import DemoSettingsPage from '@/pages/demo/DemoSettingsPage';
+
+function DemoRoutes() {
+  return (
+    <SelectedClassProvider>
+      <DemoAppShell>
+        <Routes>
+          <Route path="dashboard" element={<DemoDashboardPage />} />
+          <Route path="classes" element={<DemoClassManagementPage />} />
+          <Route path="settings" element={<DemoSettingsPage />} />
+          <Route path="*" element={<Navigate to="dashboard" replace />} />
+        </Routes>
+      </DemoAppShell>
+    </SelectedClassProvider>
+  );
+}
+
 function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/teacher/*" element={<TeacherRoutes />} />
       <Route path="/learner/*" element={<LearnerRoutes />} />
+      <Route path="/demo/*" element={<DemoRoutes />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -438,7 +438,7 @@ export default function LandingPage() {
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
               <button 
-                onClick={() => navigate('/teacher/login')}
+                onClick={() => navigate('/demo/dashboard')}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-base font-medium px-8 py-4 rounded-full border border-zinc-200 text-zinc-900 hover:bg-white transition-all duration-200 bg-zinc-50"
               >
                 Teacher Dashboard Demo
