@@ -21,7 +21,7 @@ export default function DemoAppShell({ children }: { children: React.ReactNode }
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 flex">
+    <div className="h-screen bg-zinc-50 flex overflow-hidden">
       <DemoSidebar />
 
       {/* Mobile Sidebar Overlay */}
@@ -33,7 +33,7 @@ export default function DemoAppShell({ children }: { children: React.ReactNode }
       )}
 
       <div className={cn(
-        "flex-1 flex flex-col min-w-0 transition-all duration-300",
+        "flex-1 flex flex-col min-w-0 transition-all duration-300 overflow-hidden",
         sidebarOpen && "lg:ml-64"
       )}>
         <TopBar 
