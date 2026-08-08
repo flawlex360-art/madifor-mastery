@@ -208,10 +208,7 @@ export async function addLearner(
 }
 
 export async function removeLearner(learnerId: string) {
-  const { error } = await db
-    .from('learners')
-    .delete()
-    .eq('id', learnerId);
+  const { error } = await db.rpc('delete_learner_account', { p_learner_id: learnerId });
   if (error) throw new Error(error.message);
 }
 
