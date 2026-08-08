@@ -192,7 +192,7 @@ export async function addLearner(
 ) {
   const { data: learnerId, error } = await db.rpc('create_learner_account', {
     p_class_id: classId,
-    p_display_name: displayName,
+    p_display_name: displayName.trim(),
     p_email: email,
     p_password: password,
   });

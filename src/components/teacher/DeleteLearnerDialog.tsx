@@ -31,7 +31,8 @@ export default function DeleteLearnerDialog({
 
   if (!learner) return null;
 
-  const isMatch = confirmName.toLowerCase() === learner.display_name.toLowerCase();
+  const trimmedName = learner.display_name.trim();
+  const isMatch = confirmName.trim().toLowerCase() === trimmedName.toLowerCase();
   const isDisabled = !isMatch || loading;
 
   return (
@@ -56,7 +57,7 @@ export default function DeleteLearnerDialog({
 
               <div className="text-zinc-600 space-y-4 w-full">
                 <p>
-                  You are about to delete <strong>{learner.display_name}</strong>.
+                  You are about to delete <strong>{trimmedName}</strong>.
                 </p>
                 <p className="text-sm text-red-600 font-medium bg-red-50 p-3 rounded-md">
                   This will permanently delete all their data including progress, attempts, and mastery. This cannot be undone.
@@ -64,7 +65,7 @@ export default function DeleteLearnerDialog({
                 
                 <div className="text-left w-full mt-4">
                   <Input
-                    label={`Type "${learner.display_name}" to confirm`}
+                    label={`Type "${trimmedName}" to confirm`}
                     value={confirmName}
                     onChange={(e) => setConfirmName(e.target.value)}
                     placeholder="Enter learner name"
