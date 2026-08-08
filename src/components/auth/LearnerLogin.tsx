@@ -169,6 +169,9 @@ export default function LearnerLogin({ onSignIn }: { onSignIn?: () => void }) {
                 Login as Teacher
               </button>
             </p>
+            <p className="text-center text-xs text-zinc-400 pt-2">
+              Need assistance? Contact Madifor on <a href="tel:0592664865" className="text-zinc-600 hover:underline">059-266-4865</a>
+            </p>
           </motion.div>
         </motion.div>
       </div>

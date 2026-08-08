@@ -127,6 +127,12 @@ export default function LandingPage() {
               <span className="text-lg font-bold tracking-tight text-zinc-900">Madifor Mastery</span>
             </div>
             <div className="flex items-center gap-3">
+              <a
+                href="tel:0592664865"
+                className="hidden sm:inline-flex items-center px-4 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors"
+              >
+                Contact Now
+              </a>
               <button
                 onClick={() => navigate('/teacher/login')}
                 className="hidden md:inline-flex items-center px-4 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors"
@@ -447,10 +453,15 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-2.5">
-                <img src="/logo.png" alt="Madifor Mastery Logo" className="w-8 h-8 object-contain" />
+              <img src="/logo.png" alt="Madifor Mastery Logo" className="w-8 h-8 object-contain" />
               <span className="font-bold text-zinc-900">Madifor Mastery</span>
             </div>
-            <p className="text-sm text-zinc-500">© {new Date().getFullYear()} Madifor Mastery. All rights reserved.</p>
+            <div className="flex flex-col md:items-end text-center md:text-right gap-1">
+              <p className="text-sm text-zinc-600 font-medium">
+                Need assistance? Contact Madifor on <a href="tel:0592664865" className="text-zinc-900 hover:underline">059-266-4865</a>
+              </p>
+              <p className="text-sm text-zinc-500">© {new Date().getFullYear()} Madifor Mastery. All rights reserved.</p>
+            </div>
           </div>
         </div>
       </footer>
