@@ -20,16 +20,19 @@ export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) 
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessMessage('');
     setLoading(true);
     try {
       if (mode === 'login') {
         await onSignIn(email, password);
+        navigate('/teacher/dashboard');
       } else {
         if (password !== confirmPassword) {
           setError('Passwords do not match');
@@ -42,8 +45,12 @@ export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) 
           return;
         }
         await onSignUp(email, password, fullName, schoolName);
+        setSuccessMessage('Registration successful! Please sign in with your new credentials.');
+        setMode('login');
+        setPassword('');
+        setConfirmPassword('');
+        setAgreedToTerms(false);
       }
-      navigate('/teacher/dashboard');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -221,6 +228,19 @@ export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) 
               </motion.div>
             )}
 
+            {successMessage && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="flex items-center gap-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 p-4 rounded-xl mt-4"
+              >
+                <div className="w-5 h-5 flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 flex-shrink-0 font-bold">
+                  ✓
+                </div>
+                <p>{successMessage}</p>
+              </motion.div>
+            )}
+
             <motion.div variants={itemVariants} className="pt-4">
               <Button type="submit" className="w-full h-12 text-base" size="lg" disabled={loading}>
                 {loading ? (
@@ -240,7 +260,7 @@ export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) 
               {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
               <button
                 type="button"
-                onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); }}
+                onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setSuccessMessage(''); }}
                 className="text-zinc-900 font-semibold hover:text-zinc-600 transition-colors hover:underline"
               >
                 {mode === 'login' ? 'Sign up' : 'Sign in'}
