@@ -1,15 +1,24 @@
 import { NavLink } from 'react-router-dom';
 import { Home, LineChart } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useUIStore } from '@/stores/uiStore';
 
 export default function DemoLearnerSidebar() {
+  const sidebarOpen = useUIStore(s => s.sidebarOpen);
+  const setSidebarOpen = useUIStore(s => s.setSidebarOpen);
+
   const links = [
     { to: '/demo-learner/home', label: 'Home', icon: <Home className="w-5 h-5" /> },
     { to: '/demo-learner/progress', label: 'My Progress', icon: <LineChart className="w-5 h-5" /> },
   ];
 
   return (
-    <aside className="hidden lg:flex fixed inset-y-0 left-0 z-40 w-64 bg-white text-zinc-900 border-r border-zinc-200 flex-col">
+    <aside 
+      className={cn(
+        "fixed lg:static inset-y-0 left-0 z-40 w-64 bg-white text-zinc-900 border-r border-zinc-200 flex flex-col transition-transform duration-300 ease-in-out lg:transition-none shadow-2xl lg:shadow-none",
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      )}
+    >
       <div className="h-16 flex items-center px-6 border-b border-zinc-200 shrink-0">
         <div className="flex items-center gap-2.5">
           <img src="/logo.png" alt="Madifor Mastery Logo" className="w-8 h-8 object-contain" />
@@ -22,6 +31,7 @@ export default function DemoLearnerSidebar() {
           <NavLink
             key={link.to}
             to={link.to}
+            onClick={() => setSidebarOpen(false)}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',

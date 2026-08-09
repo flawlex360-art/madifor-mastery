@@ -1,15 +1,15 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { cn } from '@/lib/utils';
 import DemoLearnerSidebar from './DemoLearnerSidebar';
 import { LogOut, Menu } from 'lucide-react';
+import { useUIStore } from '@/stores/uiStore';
 
 interface DemoLearnerAppShellProps {
   children: React.ReactNode;
 }
 
 export default function DemoLearnerAppShell({ children }: DemoLearnerAppShellProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarOpen = useUIStore(s => s.sidebarOpen);
+  const setSidebarOpen = useUIStore(s => s.setSidebarOpen);
   const navigate = useNavigate();
 
   return (
@@ -24,10 +24,7 @@ export default function DemoLearnerAppShell({ children }: DemoLearnerAppShellPro
         />
       )}
 
-      <div className={cn(
-        "flex-1 flex flex-col min-w-0 transition-all duration-300 overflow-hidden",
-        sidebarOpen && "lg:ml-64"
-      )}>
+      <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 overflow-hidden">
         {/* Top Bar */}
         <header className="h-16 bg-white border-b border-zinc-200 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-20 shadow-sm">
           <div className="flex items-center gap-3">
