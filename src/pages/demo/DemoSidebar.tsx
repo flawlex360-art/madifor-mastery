@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, Users, Settings, RotateCcw, TrendingUp, AlertCircle, School, Map } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Users, Settings, RotateCcw, TrendingUp, AlertCircle, Map } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/uiStore';
 
@@ -24,7 +24,6 @@ import { BarChart3 } from 'lucide-react'; // Fix missing import
 
 const demoBottomLinks: SidebarLink[] = [
   { to: '/demo/classes', label: 'Classes', icon: <Users className="w-5 h-5" /> },
-  { to: '/teacher/school', label: 'School', icon: <School className="w-5 h-5" /> },
   { to: '/demo/settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
 ];
 

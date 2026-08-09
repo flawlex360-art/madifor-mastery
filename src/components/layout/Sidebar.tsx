@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, Users, Settings, Home, GraduationCap, BarChart3, RotateCcw, TrendingUp, AlertCircle, School, Map } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Users, Settings, Home, GraduationCap, BarChart3, RotateCcw, TrendingUp, AlertCircle, Map } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/uiStore';
 
@@ -21,7 +21,6 @@ const teacherLinks: SidebarLink[] = [
 
 const teacherBottomLinks: SidebarLink[] = [
   { to: '/teacher/classes', label: 'Classes', icon: <Users className="w-5 h-5" /> },
-  { to: '/teacher/school', label: 'School', icon: <School className="w-5 h-5" /> },
   { to: '/teacher/settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
 ];
 

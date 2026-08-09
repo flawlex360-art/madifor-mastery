@@ -15,7 +15,6 @@ import QuestionAnalyticsPage from '@/pages/teacher/QuestionAnalyticsPage';
 import ReviewQueuePage from '@/pages/teacher/ReviewQueuePage';
 import LearnerTrendsPage from '@/pages/teacher/LearnerTrendsPage';
 import MisconceptionsPage from '@/pages/teacher/MisconceptionsPage';
-import SchoolOnboardingPage from '@/pages/teacher/SchoolOnboardingPage';
 import LandingPage from '@/pages/LandingPage';
 import HomePage from '@/pages/learner/HomePage';
 import AssessmentPage from '@/pages/learner/AssessmentPage';
@@ -49,7 +48,6 @@ function TeacherRoutes() {
           <Route path="reviews" element={<ReviewQueuePage />} />
           <Route path="trends" element={<LearnerTrendsPage />} />
           <Route path="misconceptions" element={<MisconceptionsPage />} />
-          <Route path="school" element={<SchoolOnboardingPage />} />
           <Route path="classes" element={<ClassManagementPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="dashboard" replace />} />
