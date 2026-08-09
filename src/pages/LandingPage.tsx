@@ -194,10 +194,10 @@ export default function LandingPage() {
             {/* CTAs */}
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <button 
-                onClick={() => navigate('/demo-learner/home')}
+                onClick={() => navigate('/learner/login')}
                 className="group w-full sm:w-auto inline-flex items-center justify-center gap-2 text-base font-semibold px-8 py-4 bg-zinc-900 text-white rounded-full shadow-lg shadow-zinc-900/10 hover:bg-zinc-800 transition-all duration-200 active:scale-[0.97]"
               >
-                Learner Dashboard Demo
+                Start Learning
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
               <button 
