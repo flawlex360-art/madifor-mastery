@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import DemoLearnerSidebar from './DemoLearnerSidebar';
 import { LogOut, Menu } from 'lucide-react';
 import { useUIStore } from '@/stores/uiStore';
+import PageTransition from '@/components/layout/PageTransition';
 
 interface DemoLearnerAppShellProps {
   children: React.ReactNode;
@@ -70,7 +71,9 @@ export default function DemoLearnerAppShell({ children }: DemoLearnerAppShellPro
               </button>
             </div>
 
-            {children}
+            <PageTransition>
+              {children}
+            </PageTransition>
           </div>
         </main>
       </div>

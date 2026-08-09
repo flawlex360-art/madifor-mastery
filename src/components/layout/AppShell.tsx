@@ -4,6 +4,7 @@ import TopBar from './TopBar';
 import OfflineIndicator from './OfflineIndicator';
 import ToastContainer from '@/components/ui/Toast';
 import { useUIStore } from '@/stores/uiStore';
+import PageTransition from './PageTransition';
 
 interface AppShellProps {
   userName: string;
@@ -30,7 +31,9 @@ export default function AppShell({ userName, userRole, onLogout, children }: App
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar userName={userName} userRole={userRole} onLogout={onLogout} />
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {children}
+          <PageTransition>
+            {children}
+          </PageTransition>
         </main>
       </div>
 

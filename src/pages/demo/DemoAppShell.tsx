@@ -5,6 +5,7 @@ import DemoSidebar from './DemoSidebar';
 import { useUIStore } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
 import { DEMO_TEACHER } from './demoData';
+import PageTransition from '@/components/layout/PageTransition';
 
 export default function DemoAppShell({ children }: { children: React.ReactNode }) {
   const sidebarOpen = useUIStore(s => s.sidebarOpen);
@@ -43,9 +44,9 @@ export default function DemoAppShell({ children }: { children: React.ReactNode }
         />
         <main className="flex-1 overflow-auto custom-scrollbar relative">
           <div className="max-w-7xl mx-auto p-4 lg:p-8">
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-both">
+            <PageTransition>
               {children}
-            </div>
+            </PageTransition>
           </div>
         </main>
       </div>
