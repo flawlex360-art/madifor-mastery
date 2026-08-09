@@ -173,7 +173,11 @@ export default function AdminDashboardPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {t.id !== teacher.id && (
+                        {t.id === teacher.id ? (
+                          <span className="text-xs font-medium text-zinc-400 italic px-2 py-1 bg-zinc-100 rounded-md">
+                            Current User
+                          </span>
+                        ) : (
                           <>
                             <button
                               onClick={() => handleToggleSuspend(t)}
