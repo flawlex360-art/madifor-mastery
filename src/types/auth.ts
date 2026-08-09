@@ -6,6 +6,8 @@ export interface Teacher {
   full_name: string;
   email: string;
   role: 'teacher' | 'school_admin';
+  is_admin?: boolean;
+  status?: 'active' | 'suspended';
   created_at: string;
 }
 

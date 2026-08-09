@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, Users, Settings, Home, GraduationCap, BarChart3, RotateCcw, TrendingUp, AlertCircle, Map } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Users, Settings, Home, GraduationCap, BarChart3, RotateCcw, TrendingUp, AlertCircle, Map, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuth } from '@/hooks/useAuth';
 
 interface SidebarLink {
   to: string;
@@ -74,6 +75,7 @@ function SidebarLinks({ links, onClick, label }: { links: SidebarLink[], onClick
 export default function Sidebar({ role }: SidebarProps) {
   const sidebarOpen = useUIStore(s => s.sidebarOpen);
   const setSidebarOpen = useUIStore(s => s.setSidebarOpen);
+  const { teacher } = useAuth();
 
   return (
     <aside
@@ -93,6 +95,15 @@ export default function Sidebar({ role }: SidebarProps) {
             <div className="flex-1" />
             <div className="border-t border-zinc-200 pt-6 mt-4">
               <SidebarLinks links={teacherBottomLinks} onClick={() => setSidebarOpen(false)} label="Management" />
+              {teacher?.is_admin && (
+                <div className="mt-2">
+                  <SidebarLinks 
+                    links={[{ to: '/teacher/admin', label: 'Admin Panel', icon: <ShieldAlert className="w-5 h-5 text-red-500" /> }]} 
+                    onClick={() => setSidebarOpen(false)} 
+                    label="Super Admin" 
+                  />
+                </div>
+              )}
             </div>
           </>
         ) : (

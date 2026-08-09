@@ -15,6 +15,7 @@ import QuestionAnalyticsPage from '@/pages/teacher/QuestionAnalyticsPage';
 import ReviewQueuePage from '@/pages/teacher/ReviewQueuePage';
 import LearnerTrendsPage from '@/pages/teacher/LearnerTrendsPage';
 import MisconceptionsPage from '@/pages/teacher/MisconceptionsPage';
+import AdminDashboardPage from '@/pages/teacher/AdminDashboardPage';
 import LandingPage from '@/pages/LandingPage';
 import HomePage from '@/pages/learner/HomePage';
 import AssessmentPage from '@/pages/learner/AssessmentPage';
@@ -31,6 +32,24 @@ function TeacherRoutes() {
 
   if (!teacher) {
     return <TeacherLogin onSignIn={signIn} onSignUp={signUp} />;
+  }
+
+  // Handle suspended accounts
+  if (teacher.status === 'suspended') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50 p-4">
+        <h1 className="text-3xl font-bold text-zinc-900 mb-2">Account Suspended</h1>
+        <p className="text-zinc-600 mb-6 text-center max-w-md">
+          Your account has been temporarily suspended by an administrator. Please contact support if you believe this is a mistake.
+        </p>
+        <button 
+          onClick={async () => { await signOut(); navigate('/'); }}
+          className="px-6 py-2 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition-colors"
+        >
+          Sign Out
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -50,6 +69,7 @@ function TeacherRoutes() {
           <Route path="misconceptions" element={<MisconceptionsPage />} />
           <Route path="classes" element={<ClassManagementPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="admin" element={<AdminDashboardPage />} />
           <Route path="*" element={<Navigate to="dashboard" replace />} />
         </Routes>
       </AppShell>
