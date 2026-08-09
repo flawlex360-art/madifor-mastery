@@ -8,6 +8,7 @@ export interface Teacher {
   role: 'teacher' | 'school_admin';
   is_admin?: boolean;
   status?: 'active' | 'suspended';
+  school_name?: string;
   created_at: string;
 }
 

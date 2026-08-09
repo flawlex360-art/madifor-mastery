@@ -9,6 +9,7 @@ export interface AdminTeacherRecord {
   full_name: string;
   is_admin: boolean;
   status: 'active' | 'suspended';
+  school_name?: string;
   created_at: string;
   classes?: { id: string }[];
 }

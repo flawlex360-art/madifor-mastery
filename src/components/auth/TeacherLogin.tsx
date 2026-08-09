@@ -7,7 +7,7 @@ import Input from '@/components/ui/Input';
 
 interface TeacherLoginProps {
   onSignIn: (email: string, password: string) => Promise<unknown>;
-  onSignUp: (email: string, password: string, fullName: string) => Promise<unknown>;
+  onSignUp: (email: string, password: string, fullName: string, schoolName?: string) => Promise<unknown>;
 }
 
 export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) {
@@ -15,6 +15,10 @@ export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [schoolName, setSchoolName] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -27,7 +31,17 @@ export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) 
       if (mode === 'login') {
         await onSignIn(email, password);
       } else {
-        await onSignUp(email, password, fullName);
+        if (password !== confirmPassword) {
+          setError('Passwords do not match');
+          setLoading(false);
+          return;
+        }
+        if (!agreedToTerms) {
+          setError('You must agree to the Terms and Conditions');
+          setLoading(false);
+          return;
+        }
+        await onSignUp(email, password, fullName, schoolName);
       }
       navigate('/teacher/dashboard');
     } catch (err: unknown) {
@@ -104,7 +118,7 @@ export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) 
       {/* Right side: Form */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-12 relative z-10">
         <motion.div 
-          className="w-full max-w-md bg-white border border-zinc-200 rounded-[2rem] shadow-sm p-8 sm:p-10"
+          className="w-full max-w-md bg-white border border-zinc-200 rounded-[2rem] shadow-sm p-8 sm:p-10 my-8 max-h-[90vh] overflow-y-auto custom-scrollbar"
           variants={containerVariants}
           initial="hidden"
           animate="visible"
@@ -121,15 +135,26 @@ export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) 
           {/* Form wrapper text-gray-900 to ensure Input text is visible if it inherits, but wrapping inputs in divs */}
           <form onSubmit={handleSubmit} className="space-y-5 text-left">
             {mode === 'signup' && (
-              <motion.div variants={itemVariants} className="text-zinc-950">
-                <Input
-                  label="Full Name"
-                  value={fullName}
-                  onChange={e => setFullName(e.target.value)}
-                  placeholder="e.g. Kwame Asante"
-                  required
-                />
-              </motion.div>
+              <>
+                <motion.div variants={itemVariants} className="text-zinc-950">
+                  <Input
+                    label="Full Name"
+                    value={fullName}
+                    onChange={e => setFullName(e.target.value)}
+                    placeholder="e.g. Kwame Asante"
+                    required
+                  />
+                </motion.div>
+                <motion.div variants={itemVariants} className="text-zinc-950">
+                  <Input
+                    label="School Name"
+                    value={schoolName}
+                    onChange={e => setSchoolName(e.target.value)}
+                    placeholder="e.g. Presby Senior High"
+                    required
+                  />
+                </motion.div>
+              </>
             )}
             <motion.div variants={itemVariants} className="text-zinc-950">
               <Input
@@ -152,6 +177,38 @@ export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) 
                 minLength={6}
               />
             </motion.div>
+            
+            {mode === 'signup' && (
+              <>
+                <motion.div variants={itemVariants} className="text-zinc-950">
+                  <Input
+                    label="Confirm Password"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    minLength={6}
+                  />
+                </motion.div>
+
+                <motion.div variants={itemVariants} className="pt-2 flex items-start gap-3 text-zinc-950">
+                  <input
+                    type="checkbox"
+                    id="terms"
+                    checked={agreedToTerms}
+                    onChange={(e) => setAgreedToTerms(e.target.checked)}
+                    className="mt-1 w-4 h-4 text-blue-600 bg-zinc-100 border-zinc-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="terms" className="text-sm text-zinc-600 leading-snug">
+                    I agree to the{' '}
+                    <button type="button" onClick={() => setShowTerms(true)} className="text-zinc-900 font-semibold hover:underline">
+                      Terms and Conditions
+                    </button>
+                  </label>
+                </motion.div>
+              </>
+            )}
 
             {error && (
               <motion.div 
@@ -205,6 +262,54 @@ export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) 
           </motion.div>
         </motion.div>
       </div>
+
+      {/* Terms and Conditions Modal */}
+      {showTerms && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50">
+              <h3 className="text-xl font-bold text-zinc-900">Terms and Conditions</h3>
+              <button onClick={() => setShowTerms(false)} className="text-zinc-400 hover:text-zinc-900">
+                ✕
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 text-sm text-zinc-600 space-y-4">
+              <p><strong>Welcome to Madifor Mastery!</strong></p>
+              <p>
+                By registering as a teacher on our platform, you agree to be bound by these terms. 
+                Please read them carefully before creating your account.
+              </p>
+              <h4 className="font-semibold text-zinc-900 mt-4">1. Trial Access and Future Pricing</h4>
+              <p>
+                Your current access to Madifor Mastery is provided as a <strong>free trial</strong>. 
+                We are currently offering the platform at no cost while we continue to develop and refine our features. 
+                However, please be advised that <strong>you may be asked to pay for access in the future</strong>. 
+                We will notify all active teachers at least 30 days in advance before any subscription fees or payment plans are implemented.
+              </p>
+              <h4 className="font-semibold text-zinc-900 mt-4">2. Account Responsibilities</h4>
+              <p>
+                You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. 
+                You agree to provide accurate, current, and complete information during the registration process, including your correct school affiliation.
+              </p>
+              <h4 className="font-semibold text-zinc-900 mt-4">3. Data Privacy and Student Information</h4>
+              <p>
+                As a teacher, you may have access to student performance data. You agree to use this information solely for educational purposes 
+                and to protect student privacy in accordance with applicable educational laws and regulations in your jurisdiction.
+              </p>
+              <h4 className="font-semibold text-zinc-900 mt-4">4. Platform Abuse</h4>
+              <p>
+                Any abuse of the platform, including but not limited to unauthorized access, uploading malicious content, or exploiting vulnerabilities, 
+                will result in immediate termination of your account.
+              </p>
+            </div>
+            <div className="p-6 border-t border-zinc-100 bg-zinc-50">
+              <Button onClick={() => setShowTerms(false)} className="w-full">
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

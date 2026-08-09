@@ -43,6 +43,9 @@ interface AssessmentState {
   // Practice mode
   practiceMode: boolean;
   practiceSessionId: string | null;
+  
+  // Review mode
+  isReviewMode: boolean;
 
   // Current question state
   selectedAnswer: number | string | null;
@@ -56,6 +59,7 @@ interface AssessmentState {
   // Actions
   prefetchTopic: (topicId: string) => Promise<void>;
   startAssessment: (learnerId: string, topicId: string, practiceMode?: boolean) => Promise<void>;
+  startReviewSession: (learnerId: string) => Promise<void>;
   selectAnswer: (answer: number | string) => void;
   submitAnswer: () => Promise<void>;
   revealHint: () => void;
@@ -79,6 +83,7 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
   questionStartTime: Date.now(),
   practiceMode: false,
   practiceSessionId: null,
+  isReviewMode: false,
   selectedAnswer: null,
   isSubmitted: false,
   isCorrect: null,
@@ -176,6 +181,55 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
       set({
         sessionId,
         practiceSessionId,
+        isReviewMode: false,
+        questions: allQuestions,
+        currentIndex: 0,
+        answers: new Map(),
+        status: 'in_progress',
+        startedAt: new Date(),
+        questionStartTime: Date.now(),
+        selectedAnswer: null,
+        isSubmitted: false,
+        isCorrect: null,
+        hintsRevealed: 0,
+      });
+    } catch (err) {
+      set({ status: 'idle' });
+      throw err;
+    }
+  },
+
+  startReviewSession: async (learnerId: string) => {
+    set({ status: 'loading', learnerId, topicId: null, practiceMode: false, isReviewMode: true });
+    try {
+      const sessionId = generateUUID();
+
+      let reviewQuestions: Record<string, unknown>[] = [];
+      if (isOnline()) {
+        reviewQuestions = await getReviewQuestions(learnerId, 15);
+      }
+
+      const allQuestions: AssessmentQuestion[] = reviewQuestions.map((q: any) => ({
+        ...q,
+        is_review: true,
+        topic_id: q.review_topic_id,
+      }));
+
+      if (allQuestions.length === 0) {
+        set({ status: 'idle' });
+        return;
+      }
+
+      // Shuffle
+      for (let i = allQuestions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
+      }
+
+      set({
+        sessionId,
+        practiceSessionId: null,
+        isReviewMode: true,
         questions: allQuestions,
         currentIndex: 0,
         answers: new Map(),
@@ -362,6 +416,7 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
       questionStartTime: Date.now(),
       practiceMode: false,
       practiceSessionId: null,
+      isReviewMode: false,
       selectedAnswer: null,
       isSubmitted: false,
       isCorrect: null,

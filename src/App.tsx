@@ -19,6 +19,7 @@ import AdminDashboardPage from '@/pages/teacher/AdminDashboardPage';
 import LandingPage from '@/pages/LandingPage';
 import HomePage from '@/pages/learner/HomePage';
 import AssessmentPage from '@/pages/learner/AssessmentPage';
+import ReviewPage from '@/pages/learner/ReviewPage';
 import ProgressPage from '@/pages/learner/ProgressPage';
 import { useNavigate } from 'react-router-dom';
 
@@ -106,6 +107,7 @@ function LearnerRoutes() {
       <Routes>
         <Route path="home" element={<HomePage />} />
         <Route path="assessment/:topicId" element={<AssessmentPage />} />
+        <Route path="review" element={<ReviewPage />} />
         <Route path="progress" element={<ProgressPage />} />
         <Route path="*" element={<Navigate to="home" replace />} />
       </Routes>

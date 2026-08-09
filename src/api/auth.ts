@@ -7,14 +7,14 @@ const db = supabase as any;
 // TEACHER AUTH
 // ============================================================
 
-export async function teacherSignUp(email: string, password: string, fullName: string) {
+export async function teacherSignUp(email: string, password: string, fullName: string, schoolName?: string) {
   const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
   if (authError) throw new Error(authError.message);
   if (!authData.user) throw new Error('Signup failed');
 
   const { data: teacher, error: tError } = await db
     .from('teachers')
-    .insert({ id: authData.user.id, full_name: fullName, email })
+    .insert({ id: authData.user.id, full_name: fullName, email, school_name: schoolName })
     .select()
     .single();
   if (tError) throw new Error(tError.message);

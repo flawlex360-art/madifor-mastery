@@ -148,6 +148,8 @@ export default function AdminDashboardPage() {
                 <tr>
                   <th className="px-6 py-4 font-medium">Name</th>
                   <th className="px-6 py-4 font-medium">Email</th>
+                  <th className="px-6 py-4 font-medium">School</th>
+                  <th className="px-6 py-4 font-medium">Registered</th>
                   <th className="px-6 py-4 font-medium">Status</th>
                   <th className="px-6 py-4 font-medium">Classes</th>
                   <th className="px-6 py-4 font-medium text-right">Actions</th>
@@ -161,6 +163,16 @@ export default function AdminDashboardPage() {
                       {t.is_admin && <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">Admin</span>}
                     </td>
                     <td className="px-6 py-4 text-zinc-500">{t.email}</td>
+                    <td className="px-6 py-4 text-zinc-700 font-medium">
+                      {t.school_name ? t.school_name : <span className="italic text-zinc-400 font-normal">Not provided</span>}
+                    </td>
+                    <td className="px-6 py-4 text-zinc-500 whitespace-nowrap">
+                      {new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      <br />
+                      <span className="text-xs text-zinc-400">
+                        {new Date(t.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
                         t.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'

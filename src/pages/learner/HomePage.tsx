@@ -178,7 +178,7 @@ export default function HomePage() {
         <div className="flex items-center gap-2">
           {!practiceCtx && (
             <ReviewBadge count={dueReviewCount} onClick={() => {
-              if (topics.length > 0) startAssessment(topics[0]);
+              if (dueReviewCount > 0) navigate('/learner/review');
             }} />
           )}
           {practiceCtx ? (

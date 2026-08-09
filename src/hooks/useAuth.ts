@@ -42,8 +42,8 @@ export function useAuth() {
     return teacher;
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string, fullName: string) => {
-    const teacher = await teacherSignUp(email, password, fullName);
+  const signUp = useCallback(async (email: string, password: string, fullName: string, schoolName?: string) => {
+    const teacher = await teacherSignUp(email, password, fullName, schoolName);
     return teacher;
   }, []);
 
