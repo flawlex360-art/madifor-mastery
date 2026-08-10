@@ -23,8 +23,12 @@ export default function LearnerLogin({ onSignIn }: { onSignIn?: () => void }) {
         onSignIn();
       }
       navigate('/learner/home');
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } catch (err: any) {
+      let errorMessage = err?.message || 'Invalid login credentials';
+      if (errorMessage === '{}' || typeof errorMessage === 'object') {
+        errorMessage = 'Invalid login credentials. Please check your email and password.';
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

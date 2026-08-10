@@ -51,8 +51,12 @@ export default function TeacherLogin({ onSignIn, onSignUp }: TeacherLoginProps) 
         setConfirmPassword('');
         setAgreedToTerms(false);
       }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } catch (err: any) {
+      let errorMessage = err?.message || 'Something went wrong';
+      if (errorMessage === '{}' || typeof errorMessage === 'object') {
+        errorMessage = 'Invalid login credentials or email already exists.';
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
