@@ -346,7 +346,8 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
         }
       }
     } else {
-      isCorrect = state.selectedAnswer === correctAnswer;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      isCorrect = state.selectedAnswer === (correctAnswer as any);
     }
 
     const record: AnswerRecord = {
