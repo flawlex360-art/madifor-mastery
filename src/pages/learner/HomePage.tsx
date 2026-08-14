@@ -2,8 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAssessmentStore } from '@/stores/assessmentStore';
 import { getLearnerSession, refreshLearnerSession, getPracticeContext, setPracticeContext, clearPracticeContext } from '@/api/auth';
-import { getSubjects, getCurriculumTree, getQuestionCountByTopic } from '@/api/curriculum';
-import { getTopicMastery, getDueReviews } from '@/api/assessment';
+import { getLearnerHomepageData } from '@/api/curriculum';
 import TopicCard from '@/components/curriculum/TopicCard';
 import ReviewBadge from '@/components/learner/ReviewBadge';
 import PracticeLevelModal from '@/components/learner/PracticeLevelModal';
@@ -44,47 +43,61 @@ export default function HomePage() {
       if (!session) return;
 
       const ctx = getPracticeContext();
-
-      const subjects = await getSubjects();
-      if (subjects.length === 0) return;
-
-      const tree = await getCurriculumTree(subjects[0].id);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const allTopics: Topic[] = tree.strands.flatMap((s: any) =>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        s.sub_strands.flatMap((ss: any) => ss.topics)
-      );
-
-      // Only show topics for the learner's class level (or practice level)
       const targetLevel = ctx?.practice_class_level ?? session.class_level;
-      const filteredTopics = targetLevel
-        ? allTopics.filter((t: Topic) => t.class_level === targetLevel)
-        : allTopics;
-      setTopics(filteredTopics);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const counts = await getQuestionCountByTopic(filteredTopics.map((t: any) => t.id));
-      setQuestionCounts(counts);
-
-      // Get mastery data
-      const mastery = await getTopicMastery(session.learner_id);
-      const map: Record<string, { pct: number; status: string }> = {};
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const m of mastery as any[]) {
-        map[m.topic_id] = { pct: Math.round(m.first_pass_pct), status: m.status };
+      // 1. Fast path: load from memory/sessionStorage immediately
+      const cacheKey = `flawlex_home_${session.learner_id}_${targetLevel}`;
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          setTopics(data.topics);
+          setQuestionCounts(data.questionCounts);
+          setMasteryMap(data.masteryMap);
+          setDueReviewCount(data.dueReviewCount);
+          setLoading(false); // Unblock UI immediately!
+        } catch { /* ignore */ }
+      } else {
+        setLoading(true);
       }
-      setMasteryMap(map);
 
-      // Get due reviews
-      const reviews = await getDueReviews(session.learner_id, 100);
-      setDueReviewCount(reviews.length);
+      // 2. Background update: fetch fresh data using our optimized single-query RPC
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data: any = await getLearnerHomepageData(session.learner_id, targetLevel);
+
+      const newTopics = data.topics || [];
+      const newQuestionCounts: Record<string, number> = {};
+      newTopics.forEach((t: any) => {
+        newQuestionCounts[t.id] = t.question_count || 0;
+      });
+
+      const newMasteryMap: Record<string, { pct: number; status: string }> = {};
+      (data.mastery || []).forEach((m: any) => {
+        newMasteryMap[m.topic_id] = { pct: m.pct, status: m.status };
+      });
+
+      const newReviewCount = data.dueReviewCount || 0;
+
+      // Update state with fresh data
+      setTopics(newTopics);
+      setQuestionCounts(newQuestionCounts);
+      setMasteryMap(newMasteryMap);
+      setDueReviewCount(newReviewCount);
+
+      // Save to fast cache
+      sessionStorage.setItem(cacheKey, JSON.stringify({
+        topics: newTopics,
+        questionCounts: newQuestionCounts,
+        masteryMap: newMasteryMap,
+        dueReviewCount: newReviewCount
+      }));
 
       // Load recent topics from localStorage
       const stored = localStorage.getItem(`flawlex_recent_topics_${session.learner_id}`);
       if (stored) {
         try {
           const ids = JSON.parse(stored) as string[];
-          setRecentTopicIds(ids.filter((id) => filteredTopics.some((t: Topic) => t.id === id)));
+          setRecentTopicIds(ids.filter((id) => newTopics.some((t: Topic) => t.id === id)));
         } catch { /* ignore */ }
       }
     } catch (err) {

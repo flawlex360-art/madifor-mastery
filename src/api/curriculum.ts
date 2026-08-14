@@ -110,3 +110,12 @@ export async function getRandomQuestions(topicId: string, limit: number) {
   }
   return arr.slice(0, limit);
 }
+
+export async function getLearnerHomepageData(learnerId: string, classLevel: string) {
+  const { data, error } = await db.rpc('get_learner_homepage_data', {
+    p_learner_id: learnerId,
+    p_class_level: classLevel,
+  });
+  if (error) throw error;
+  return data;
+}
