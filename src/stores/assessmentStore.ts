@@ -305,7 +305,7 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
     let isCorrect: boolean;
     if (question.question_type === 'multiple_choice') {
       isCorrect = Number(state.selectedAnswer) === Number(correctAnswer);
-    } else if (question.question_type === 'fill_in_blank') {
+    } else if (typeof correctAnswer === 'string' || typeof correctAnswer === 'number') {
       const normalize = (str: string) => str.toLowerCase().trim().replace(/\s+/g, ' ');
       const selected = normalize(String(state.selectedAnswer));
       const correctStr = String(correctAnswer);
@@ -314,16 +314,36 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
       const acceptableAnswers = correctStr.split(/[,|]/).map(normalize);
       
       const selectedNum = parseFloat(selected);
-      
-      if (!isNaN(selectedNum)) {
+      if (!isNaN(selectedNum) && /^\d+(\.\d+)?$/.test(selected.replace(/[^\d.]/g, ''))) {
         // If they typed a number, check if it matches any of the acceptable answers numerically
         isCorrect = acceptableAnswers.some(ans => {
           const correctNum = parseFloat(ans);
           return !isNaN(correctNum) && Math.abs(selectedNum - correctNum) < 0.01;
         });
       } else {
-        // Otherwise, exact string match against any acceptable answer
-        isCorrect = acceptableAnswers.includes(selected);
+        // Exact string match against any acceptable answer first
+        if (acceptableAnswers.includes(selected)) {
+          isCorrect = true;
+        } else {
+          // Keyword matching: if learner typed ANY significant keyword from the correct answer
+          const stopWords = new Set([
+            'the', 'a', 'an', 'is', 'are', 'was', 'were', 'and', 'or', 'of', 'in', 'on', 'at', 
+            'to', 'for', 'it', 'this', 'that', 'i', 'you', 'he', 'she', 'we', 'they', 'my', 
+            'your', 'his', 'her', 'our', 'their', 'be', 'do', 'does', 'did', 'have', 'has', 'had'
+          ]);
+          
+          const extractKeywords = (str: string) => 
+            str.toLowerCase()
+               .replace(/[^\w\s]/g, '')
+               .split(/\s+/)
+               .filter(w => w.length > 0 && !stopWords.has(w));
+               
+          const correctKeywords = new Set(acceptableAnswers.flatMap(extractKeywords));
+          const selectedKeywords = extractKeywords(selected);
+          
+          // If any selected keyword matches any correct keyword, mark correct
+          isCorrect = selectedKeywords.some(w => correctKeywords.has(w));
+        }
       }
     } else {
       isCorrect = state.selectedAnswer === correctAnswer;
