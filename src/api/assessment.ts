@@ -68,6 +68,28 @@ export async function getQuestionsForAssessment(topicId: string, limit: number) 
   return shuffleArray(data || []).slice(0, limit);
 }
 
+export async function getInitialQuestionForAssessment(topicId: string) {
+  // Fetch a small batch quickly to get the first question instantly
+  const { data, error } = await db
+    .from('questions')
+    .select('*')
+    .eq('topic_id', topicId)
+    .limit(5);
+  if (error) throw error;
+  return shuffleArray(data || []).slice(0, 1);
+}
+
+export async function getRemainingQuestionsForAssessment(topicId: string, limit: number, excludeId: string) {
+  const { data, error } = await db
+    .from('questions')
+    .select('*')
+    .eq('topic_id', topicId)
+    .neq('id', excludeId)
+    .limit(limit * 2);
+  if (error) throw error;
+  return shuffleArray(data || []).slice(0, limit);
+}
+
 export async function getReviewQuestions(learnerId: string, limit: number) {
   const reviews = await getDueReviews(learnerId, limit);
   if (!reviews.length) return [];

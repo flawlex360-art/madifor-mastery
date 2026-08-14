@@ -9,10 +9,11 @@ interface FeedbackPanelProps {
   onRevealHint: () => void;
   onNext: () => void;
   isLast: boolean;
+  isLoadingNext?: boolean;
 }
 
 export default function FeedbackPanel({
-  isCorrect, explanation, hints, hintsRevealed, onRevealHint, onNext, isLast,
+  isCorrect, explanation, hints, hintsRevealed, onRevealHint, onNext, isLast, isLoadingNext
 }: FeedbackPanelProps) {
   return (
     <div className="mt-6 space-y-4">
@@ -47,8 +48,8 @@ export default function FeedbackPanel({
         </div>
       )}
 
-      <Button onClick={onNext} className="w-full" size="lg">
-        {isLast ? 'Finish Assessment' : 'Next Question'}
+      <Button onClick={onNext} className="w-full" size="lg" disabled={isLoadingNext}>
+        {isLoadingNext ? 'Loading next...' : isLast ? 'Finish Assessment' : 'Next Question'}
       </Button>
     </div>
   );

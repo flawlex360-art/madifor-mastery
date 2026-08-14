@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Question } from '@/types/curriculum';
-import { submitAttempt, getQuestionsForAssessment, getReviewQuestions } from '@/api/assessment';
+import { submitAttempt, getQuestionsForAssessment, getReviewQuestions, getInitialQuestionForAssessment, getRemainingQuestionsForAssessment } from '@/api/assessment';
 import { createVoluntaryPracticeSession, endVoluntaryPracticeSession, getTopicClassLevel } from '@/api/voluntaryPractice';
 import { ASSESSMENT_CONFIG } from '@/config/assessment';
 import { generateUUID } from '@/lib/utils';
@@ -46,6 +46,7 @@ interface AssessmentState {
   
   // Review mode
   isReviewMode: boolean;
+  isBackgroundLoading: boolean;
 
   // Current question state
   selectedAnswer: number | string | null;
@@ -84,6 +85,7 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
   practiceMode: false,
   practiceSessionId: null,
   isReviewMode: false,
+  isBackgroundLoading: false,
   selectedAnswer: null,
   isSubmitted: false,
   isCorrect: null,
@@ -109,7 +111,7 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
   },
 
   startAssessment: async (learnerId: string, topicId: string, practiceMode = false) => {
-    set({ status: 'loading', learnerId, topicId, practiceMode });
+    set({ status: 'loading', learnerId, topicId, practiceMode, isBackgroundLoading: true });
     try {
       const sessionId = generateUUID();
 
@@ -128,61 +130,33 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let topicQuestions: any[] = await getCachedQuestionsByTopic(topicId);
       
-      // If cache is empty or incomplete, fetch from network immediately
-      if (topicQuestions.length === 0 && isOnline()) {
-        topicQuestions = await getQuestionsForAssessment(
-          topicId,
-          ASSESSMENT_CONFIG.questionsPerTopic
-        );
-        if (topicQuestions.length > 0) {
-          await cacheQuestions(topicQuestions as CachedQuestion[]);
-        }
+      let initialQuestion = null;
+
+      if (topicQuestions.length > 0) {
+         // Use the first cached question
+         initialQuestion = topicQuestions[0];
       } else if (isOnline()) {
-        // If we used cache, kick off a silent revalidation in the background
-        getQuestionsForAssessment(topicId, ASSESSMENT_CONFIG.questionsPerTopic)
-          .then((q) => {
-             if (q.length > 0) cacheQuestions(q as CachedQuestion[]);
-          })
-          .catch(() => {}); // ignore network errors for silent background fetch
+         // FAST PATH: Get 1 question immediately
+         const initialBatch = await getInitialQuestionForAssessment(topicId);
+         if (initialBatch.length > 0) {
+           initialQuestion = initialBatch[0];
+         }
       }
 
-      // Only fetch review questions in non-practice mode and online
-      let reviewQuestions: Record<string, unknown>[] = [];
-      if (!practiceMode && isOnline()) {
-        reviewQuestions = await getReviewQuestions(
-          learnerId,
-          ASSESSMENT_CONFIG.reviewInterleaveCount.max
-        );
+      if (!initialQuestion) {
+         // No questions available
+         set({ status: 'idle', isBackgroundLoading: false });
+         return;
       }
 
-      // Combine and shuffle
-      const allQuestions: AssessmentQuestion[] = [
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ...topicQuestions.map((q: any) => ({ ...q, is_review: false })),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ...reviewQuestions.map((q: any) => ({
-          ...q,
-          is_review: true,
-          topic_id: q.review_topic_id,
-        })),
-      ];
-
-      if (allQuestions.length === 0) {
-        set({ status: 'idle' });
-        return;
-      }
-
-      // Shuffle
-      for (let i = allQuestions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
-      }
+      // Start the assessment with just this 1 question!
+      const firstAssessmentQuestion: AssessmentQuestion = { ...initialQuestion, is_review: false };
 
       set({
         sessionId,
         practiceSessionId,
         isReviewMode: false,
-        questions: allQuestions,
+        questions: [firstAssessmentQuestion],
         currentIndex: 0,
         answers: new Map(),
         status: 'in_progress',
@@ -192,9 +166,71 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
         isSubmitted: false,
         isCorrect: null,
         hintsRevealed: 0,
+        isBackgroundLoading: true,
       });
+
+      // FIRE AND FORGET: Load the rest in the background
+      const loadBackground = async () => {
+         try {
+           // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           let remainingTopicQuestions: any[] = [];
+           if (topicQuestions.length > 1) {
+              // We have cache, just use the rest of it
+              remainingTopicQuestions = topicQuestions.slice(1);
+           } else if (isOnline()) {
+              // Fetch remaining from DB
+              remainingTopicQuestions = await getRemainingQuestionsForAssessment(topicId, ASSESSMENT_CONFIG.questionsPerTopic - 1, initialQuestion.id);
+           }
+
+           let reviewQuestions: Record<string, unknown>[] = [];
+           if (!practiceMode && isOnline()) {
+             reviewQuestions = await getReviewQuestions(learnerId, ASSESSMENT_CONFIG.reviewInterleaveCount.max);
+           }
+
+           // Combine and shuffle
+           const additionalQuestions: AssessmentQuestion[] = [
+             // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             ...remainingTopicQuestions.map((q: any) => ({ ...q, is_review: false })),
+             // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             ...reviewQuestions.map((q: any) => ({
+               ...q,
+               is_review: true,
+               topic_id: q.review_topic_id,
+             })),
+           ];
+
+           if (additionalQuestions.length > 0) {
+             // Shuffle additional questions
+             for (let i = additionalQuestions.length - 1; i > 0; i--) {
+               const j = Math.floor(Math.random() * (i + 1));
+               [additionalQuestions[i], additionalQuestions[j]] = [additionalQuestions[j], additionalQuestions[i]];
+             }
+
+             // Append to state safely
+             set((state) => ({
+                questions: [...state.questions, ...additionalQuestions],
+             }));
+           }
+           
+           set({ isBackgroundLoading: false });
+
+           // Background cache update
+           if (isOnline()) {
+             const allQ = [initialQuestion, ...remainingTopicQuestions];
+             if (allQ.length > 0) {
+               cacheQuestions(allQ as CachedQuestion[]).catch(() => {});
+             }
+           }
+         } catch (e) {
+           console.error("Background load failed", e);
+           set({ isBackgroundLoading: false });
+         }
+      };
+
+      loadBackground(); // DO NOT AWAIT!
+
     } catch (err) {
-      set({ status: 'idle' });
+      set({ status: 'idle', isBackgroundLoading: false });
       throw err;
     }
   },
@@ -380,6 +416,9 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
     const state = get();
     const nextIdx = state.currentIndex + 1;
     if (nextIdx >= state.questions.length) {
+      if (state.isBackgroundLoading) {
+        return; // Wait for background loading
+      }
       // Session complete — if practice mode, end the practice session
       if (state.practiceMode && state.practiceSessionId && isOnline()) {
         const s = state.score();
@@ -417,6 +456,7 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
       practiceMode: false,
       practiceSessionId: null,
       isReviewMode: false,
+      isBackgroundLoading: false,
       selectedAnswer: null,
       isSubmitted: false,
       isCorrect: null,

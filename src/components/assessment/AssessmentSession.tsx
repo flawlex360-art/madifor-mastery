@@ -16,7 +16,7 @@ export default function AssessmentSession({ topicName, onHome }: AssessmentSessi
   const {
     questions, currentIndex, status, selectedAnswer, isSubmitted, isCorrect,
     hintsRevealed, selectAnswer, submitAnswer, revealHint, nextQuestion,
-    score, startAssessment, learnerId, topicId, reset, practiceMode, answers,
+    score, startAssessment, learnerId, topicId, reset, practiceMode, answers, isBackgroundLoading
   } = useAssessmentStore();
 
   if (status === 'loading') {
@@ -63,6 +63,10 @@ export default function AssessmentSession({ topicName, onHome }: AssessmentSessi
   const question = questions[currentIndex];
   const currentScore = score();
 
+  const isAtEndOfQueue = currentIndex === questions.length - 1;
+  const isReallyLast = isAtEndOfQueue && !isBackgroundLoading;
+  const isWaitingForMore = isAtEndOfQueue && isBackgroundLoading;
+
   return (
     <div className="max-w-2xl mx-auto">
       {/* Header */}
@@ -78,7 +82,7 @@ export default function AssessmentSession({ topicName, onHome }: AssessmentSessi
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-gray-500">
-            Question {currentIndex + 1} of {questions.length}
+            Question {currentIndex + 1} of {isBackgroundLoading ? '...' : questions.length}
             {question.is_review && <span className="ml-2 text-amber-600 font-medium">(Review)</span>}
             {practiceMode && !question.is_review && <span className="ml-2 text-purple-600 font-medium">(Practice)</span>}
           </span>
@@ -89,7 +93,7 @@ export default function AssessmentSession({ topicName, onHome }: AssessmentSessi
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
             className="h-full bg-teal-400 transition-all duration-300"
-            style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
+            style={{ width: `${isBackgroundLoading ? 5 : ((currentIndex + 1) / questions.length) * 100}%` }}
           />
         </div>
       </div>
@@ -123,7 +127,8 @@ export default function AssessmentSession({ topicName, onHome }: AssessmentSessi
           hintsRevealed={hintsRevealed}
           onRevealHint={revealHint}
           onNext={nextQuestion}
-          isLast={currentIndex === questions.length - 1}
+          isLast={isReallyLast}
+          isLoadingNext={isWaitingForMore}
         />
       )}
     </div>
