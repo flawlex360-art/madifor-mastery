@@ -189,6 +189,57 @@ export async function getQuestionAnalytics(topicId?: string) {
   return data || [];
 }
 
+export async function getPsychometricAnalytics(topicId?: string) {
+  let query = db.from('question_parameters').select(`
+    question_id,
+    difficulty,
+    discrimination,
+    total_attempts,
+    questions!inner(id, content, question_type, topic_id)
+  `);
+  
+  if (topicId) {
+    query = query.eq('questions.topic_id', topicId);
+  }
+  
+  const { data, error } = await query;
+  if (error) throw error;
+  
+  // Flatten response
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data || []).map((row: any) => ({
+    question_id: row.question_id,
+    difficulty_b: row.difficulty,
+    discrimination_a: row.discrimination,
+    total_attempts: row.total_attempts,
+    stem: row.questions.content.stem || 'Unknown Question',
+    question_type: row.questions.question_type,
+    topic_id: row.questions.topic_id,
+  }));
+}
+
+export async function getAdaptiveQuestion(learnerId: string, topicId: string) {
+  const { data, error } = await db.rpc('get_adaptive_question', {
+    p_learner_id: learnerId,
+    p_topic_id: topicId
+  });
+  
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+  return data[0];
+}
+
+export async function getLearnerPsychometricProfile(learnerId: string) {
+  // Get all ability scores for this learner
+  const { data, error } = await db
+    .from('learner_abilities')
+    .select('subject_id, theta, total_answered')
+    .eq('learner_id', learnerId);
+    
+  if (error) throw error;
+  return data || [];
+}
+
 export async function getMasteryHistory(learnerId: string, topicId?: string) {
   let query = db
     .from('mastery_history')

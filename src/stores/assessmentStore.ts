@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Question } from '@/types/curriculum';
-import { submitAttempt, getQuestionsForAssessment, getReviewQuestions, getInitialQuestionForAssessment, getRemainingQuestionsForAssessment } from '@/api/assessment';
+import { submitAttempt, getQuestionsForAssessment, getReviewQuestions, getInitialQuestionForAssessment, getRemainingQuestionsForAssessment, getAdaptiveQuestion } from '@/api/assessment';
 import { createVoluntaryPracticeSession, endVoluntaryPracticeSession, getTopicClassLevel } from '@/api/voluntaryPractice';
 import { ASSESSMENT_CONFIG } from '@/config/assessment';
 import { generateUUID } from '@/lib/utils';
@@ -128,19 +128,29 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
 
       // Fetch topic questions (Stale-While-Revalidate pattern)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let topicQuestions: any[] = await getCachedQuestionsByTopic(topicId);
-      
+      let topicQuestions: any[] = [];
       let initialQuestion = null;
 
-      if (topicQuestions.length > 0) {
-         // Use the first cached question
-         initialQuestion = topicQuestions[0];
-      } else if (isOnline()) {
-         // FAST PATH: Get 1 question immediately
-         const initialBatch = await getInitialQuestionForAssessment(topicId);
-         if (initialBatch.length > 0) {
-           initialQuestion = initialBatch[0];
-         }
+      if (practiceMode && isOnline()) {
+        // ADAPTIVE PATH: Fetch the precise question for their ability
+        const adaptiveQ = await getAdaptiveQuestion(learnerId, topicId);
+        if (adaptiveQ) {
+          initialQuestion = adaptiveQ;
+        }
+      }
+
+      if (!initialQuestion) {
+        topicQuestions = await getCachedQuestionsByTopic(topicId);
+        if (topicQuestions.length > 0) {
+           // Use the first cached question
+           initialQuestion = topicQuestions[0];
+        } else if (isOnline()) {
+           // FAST PATH: Get 1 question immediately
+           const initialBatch = await getInitialQuestionForAssessment(topicId);
+           if (initialBatch.length > 0) {
+             initialQuestion = initialBatch[0];
+           }
+        }
       }
 
       if (!initialQuestion) {
@@ -171,6 +181,11 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
 
       // FIRE AND FORGET: Load the rest in the background
       const loadBackground = async () => {
+         if (practiceMode && isOnline()) {
+            // Adaptive mode fetches questions just-in-time
+            set({ isBackgroundLoading: false });
+            return;
+         }
          try {
            // eslint-disable-next-line @typescript-eslint/no-explicit-any
            let remainingTopicQuestions: any[] = [];
@@ -436,18 +451,42 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
   nextQuestion: async () => {
     const state = get();
     const nextIdx = state.currentIndex + 1;
-    if (nextIdx >= state.questions.length) {
-      if (state.isBackgroundLoading) {
+    
+    // ADAPTIVE PATH: If in practice mode and not reached max length (e.g. 10 questions)
+    if (nextIdx >= state.questions.length && state.practiceMode && isOnline() && state.questions.length < 10) {
+      set({ isBackgroundLoading: true });
+      try {
+        const nextQ = await getAdaptiveQuestion(state.learnerId!, state.topicId!);
+        if (nextQ) {
+          set(s => ({ 
+            questions: [...s.questions, { ...nextQ, is_review: false }],
+            isBackgroundLoading: false
+          }));
+          // Proceed to next question below
+        } else {
+          set({ isBackgroundLoading: false });
+        }
+      } catch (e) {
+        set({ isBackgroundLoading: false });
+        console.error('Failed to fetch adaptive question', e);
+      }
+    }
+
+    // Must refetch state because we might have modified questions array
+    const freshState = get();
+
+    if (nextIdx >= freshState.questions.length) {
+      if (freshState.isBackgroundLoading) {
         return; // Wait for background loading
       }
       // Session complete — if practice mode, end the practice session
-      if (state.practiceMode && state.practiceSessionId && isOnline()) {
-        const s = state.score();
-        await endVoluntaryPracticeSession(state.practiceSessionId, s.total, s.correct);
+      if (freshState.practiceMode && freshState.practiceSessionId && isOnline()) {
+        const s = freshState.score();
+        await endVoluntaryPracticeSession(freshState.practiceSessionId, s.total, s.correct);
       }
       // Clear saved assessment state
-      if (state.learnerId && state.topicId) {
-        await clearAssessmentState(`${state.learnerId}:${state.topicId}`);
+      if (freshState.learnerId && freshState.topicId) {
+        await clearAssessmentState(`${freshState.learnerId}:${freshState.topicId}`);
       }
       set({ status: 'complete' });
     } else {

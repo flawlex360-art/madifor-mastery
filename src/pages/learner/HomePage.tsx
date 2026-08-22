@@ -7,6 +7,7 @@ import TopicCard from '@/components/curriculum/TopicCard';
 import ReviewBadge from '@/components/learner/ReviewBadge';
 import PracticeLevelModal from '@/components/learner/PracticeLevelModal';
 import PracticeModeBanner from '@/components/learner/PracticeModeBanner';
+import PsychometricProfile from '@/components/learner/PsychometricProfile';
 import type { Topic } from '@/types/curriculum';
 import { ChevronDown, ChevronRight, BookOpen, Search, Clock } from 'lucide-react';
 
@@ -172,7 +173,13 @@ export default function HomePage() {
         />
       )}
 
-      <div className="flex items-center justify-between">
+      {/* AI Predicted Score */}
+      {!practiceCtx && session?.learner_id && (
+        <PsychometricProfile learnerId={session.learner_id} />
+      )}
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b pb-4">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-zinc-900">
