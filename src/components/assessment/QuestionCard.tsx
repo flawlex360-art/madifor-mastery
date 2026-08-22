@@ -9,12 +9,24 @@ interface QuestionCardProps {
 }
 
 export default function QuestionCard({ question, selectedAnswer, isSubmitted, onSelect }: QuestionCardProps) {
-  if (question.question_type === 'multiple_choice' && Array.isArray(question.options)) {
+  let optionsList: (string | Record<string, unknown>)[] = [];
+  if (Array.isArray(question.options)) {
+    optionsList = question.options;
+  } else if (typeof question.options === 'string') {
+    try {
+      const parsed = JSON.parse(question.options);
+      if (Array.isArray(parsed)) optionsList = parsed;
+    } catch {
+      optionsList = [];
+    }
+  }
+
+  if (question.question_type === 'multiple_choice' && optionsList.length > 0) {
     return (
       <div className="space-y-3">
         <p className="text-lg font-medium text-zinc-900 leading-relaxed">{question.stem}</p>
         <div className="space-y-2">
-          {question.options.map((option, idx) => {
+          {optionsList.map((option, idx) => {
             const isSelected = selectedAnswer === idx;
             // C-3 FIX: Use Number() normalization to match store logic
             const isCorrect = Number(question.correct_answer) === idx;

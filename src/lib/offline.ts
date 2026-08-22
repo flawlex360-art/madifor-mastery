@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'flawlex-mastery';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 // Store names
 export const STORES = {
@@ -85,7 +85,7 @@ let dbPromise: Promise<IDBPDatabase<FlawlexDB>> | null = null;
 function getDB(): Promise<IDBPDatabase<FlawlexDB>> {
   if (!dbPromise) {
     dbPromise = openDB<FlawlexDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion, _newVersion, tx) {
         // Pending attempts
         if (!db.objectStoreNames.contains(STORES.PENDING_ATTEMPTS)) {
           const store = db.createObjectStore(STORES.PENDING_ATTEMPTS, { keyPath: 'id' });
@@ -106,6 +106,16 @@ function getDB(): Promise<IDBPDatabase<FlawlexDB>> {
         // Assessment state (for browser refresh recovery)
         if (!db.objectStoreNames.contains(STORES.ASSESSMENT_STATE)) {
           db.createObjectStore(STORES.ASSESSMENT_STATE, { keyPath: 'id' });
+        }
+
+        // When upgrading from DB_VERSION 1 to 2, purge stale cached questions and ongoing assessment state
+        if (oldVersion < 2) {
+          try {
+            tx.objectStore(STORES.CACHED_QUESTIONS).clear();
+            tx.objectStore(STORES.ASSESSMENT_STATE).clear();
+          } catch (e) {
+            console.warn('Could not clear legacy cache stores:', e);
+          }
         }
       },
     });
