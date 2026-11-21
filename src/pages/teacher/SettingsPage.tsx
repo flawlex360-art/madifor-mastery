@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
@@ -8,16 +8,20 @@ import { toast } from '@/stores/toastStore';
 import { User, Lock, Save } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { teacher } = useAuth();
+  const { teacher, refreshTeacher } = useAuth();
 
-  // Profile edit state
   const [fullName, setFullName] = useState(teacher?.full_name || '');
   const [profileSaving, setProfileSaving] = useState(false);
 
-  // Password change state
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordSaving, setPasswordSaving] = useState(false);
+
+  useEffect(() => {
+    if (teacher?.full_name) {
+      setFullName(teacher.full_name);
+    }
+  }, [teacher?.full_name]);
 
   const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +35,7 @@ export default function SettingsPage() {
         .update({ full_name: fullName.trim() })
         .eq('id', teacher.id);
       if (error) throw new Error(error.message);
+      await refreshTeacher();
       toast.success('Profile updated successfully');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to update profile');
@@ -69,14 +74,17 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <h1 className="text-2xl font-bold text-zinc-900">Settings</h1>
+      <div>
+        <h1 className="text-2xl font-bold text-navy-900">Settings</h1>
+        <p className="text-sm text-slate-500">Manage your educator profile and account security</p>
+      </div>
 
       {/* Profile */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <User className="w-5 h-5 text-gray-400" />
-            <h2 className="font-semibold text-zinc-900">Profile</h2>
+            <User className="w-5 h-5 text-indigo-600" />
+            <h2 className="font-semibold text-navy-900">Profile</h2>
           </div>
         </CardHeader>
         <CardContent>
@@ -91,11 +99,11 @@ export default function SettingsPage() {
               label="Email"
               value={teacher.email}
               disabled
-              className="bg-gray-50"
+              className="bg-slate-50 text-slate-500"
             />
             <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-500">Role:</span>
-              <span className="px-2 py-1 text-xs font-medium bg-teal-100 text-teal-700 rounded-full capitalize">
+              <span className="text-sm text-slate-500">Role:</span>
+              <span className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-700 rounded-full capitalize">
                 {teacher.role}
               </span>
             </div>
@@ -112,8 +120,8 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Lock className="w-5 h-5 text-gray-400" />
-            <h2 className="font-semibold text-zinc-900">Change Password</h2>
+            <Lock className="w-5 h-5 text-indigo-600" />
+            <h2 className="font-semibold text-navy-900">Change Password</h2>
           </div>
         </CardHeader>
         <CardContent>
@@ -133,6 +141,7 @@ export default function SettingsPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Re-enter your new password"
+              minLength={6}
               required
             />
 
@@ -147,10 +156,10 @@ export default function SettingsPage() {
       {/* App info */}
       <Card>
         <CardContent className="p-6">
-          <div className="text-center text-sm text-gray-500 space-y-1">
-            <p className="font-medium text-zinc-900">Madifor Mastery</p>
-            <p>Topic-based assessment platform for BECE Science</p>
-            <p className="text-xs text-gray-400">v0.1.0</p>
+          <div className="text-center text-sm text-slate-500 space-y-1">
+            <p className="font-semibold text-navy-900">Madifor Mastery</p>
+            <p>Topic-Based Adaptive Assessment Platform for BECE Integrated Science</p>
+            <p className="text-xs text-slate-400">v0.1.0</p>
           </div>
         </CardContent>
       </Card>

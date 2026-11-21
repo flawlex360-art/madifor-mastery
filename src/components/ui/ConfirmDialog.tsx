@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Button from '@/components/ui/Button';
 import { AlertTriangle } from 'lucide-react';
 
@@ -23,7 +24,6 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  // Close on Escape key
   useEffect(() => {
     if (!open) return;
     const handleKey = (e: KeyboardEvent) => {
@@ -33,29 +33,33 @@ export default function ConfirmDialog({
     return () => window.removeEventListener('keydown', handleKey);
   }, [open, onCancel]);
 
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <div
+      role="alertdialog"
+      aria-modal="true"
       className="fixed inset-0 z-[60] flex items-center justify-center p-4"
       onClick={onCancel}
     >
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-navy-950/50 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-sm rounded-2xl border border-white/20 bg-white/80 shadow-2xl backdrop-blur-xl"
+        className="relative w-full max-w-sm rounded-2xl border border-slate-200 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 text-center">
-          <div className={`w-14 h-14 mx-auto rounded-full flex items-center justify-center mb-4 ${
-            variant === 'danger' ? 'bg-red-100' : 'bg-amber-100'
-          }`}>
-            <AlertTriangle className={`w-7 h-7 ${
-              variant === 'danger' ? 'text-red-500' : 'text-amber-500'
-            }`} />
+          <div
+            className={`w-14 h-14 mx-auto rounded-full flex items-center justify-center mb-4 ${
+              variant === 'danger' ? 'bg-red-100' : 'bg-amber-100'
+            }`}
+          >
+            <AlertTriangle
+              className={`w-7 h-7 ${variant === 'danger' ? 'text-red-600' : 'text-amber-600'}`}
+            />
           </div>
 
-          <h3 className="text-lg font-semibold text-zinc-900 mb-2">{title}</h3>
-          <p className="text-sm text-gray-500 mb-6">{message}</p>
+          <h3 className="text-lg font-bold text-navy-900 mb-2">{title}</h3>
+          <p className="text-sm text-slate-600 mb-6">{message}</p>
 
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={onCancel}>
@@ -71,19 +75,19 @@ export default function ConfirmDialog({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
-// Hook for easy usage
 export function useConfirmDialog() {
+  const resolverRef = useRef<((value: boolean) => void) | null>(null);
   const [dialog, setDialog] = useState<{
     open: boolean;
     title: string;
     message: string;
     confirmLabel?: string;
     variant?: 'danger' | 'warning';
-    onConfirm: () => void;
   } | null>(null);
 
   const confirm = (options: {
@@ -92,22 +96,27 @@ export function useConfirmDialog() {
     confirmLabel?: string;
     variant?: 'danger' | 'warning';
   }): Promise<boolean> => {
+    if (resolverRef.current) {
+      resolverRef.current(false);
+    }
     return new Promise((resolve) => {
-      setDialog({
-        open: true,
-        ...options,
-        onConfirm: () => {
-          setDialog(null);
-          resolve(true);
-        },
-      });
+      resolverRef.current = resolve;
+      setDialog({ open: true, ...options });
     });
   };
 
+  const handleConfirm = () => {
+    setDialog(null);
+    const resolve = resolverRef.current;
+    resolverRef.current = null;
+    if (resolve) resolve(true);
+  };
+
   const cancel = () => {
-    if (dialog) {
-      setDialog(null);
-    }
+    setDialog(null);
+    const resolve = resolverRef.current;
+    resolverRef.current = null;
+    if (resolve) resolve(false);
   };
 
   const ConfirmDialogComponent = dialog ? (
@@ -117,7 +126,7 @@ export function useConfirmDialog() {
       message={dialog.message}
       confirmLabel={dialog.confirmLabel}
       variant={dialog.variant}
-      onConfirm={dialog.onConfirm}
+      onConfirm={handleConfirm}
       onCancel={cancel}
     />
   ) : null;

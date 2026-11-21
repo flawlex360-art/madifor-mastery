@@ -1,6 +1,6 @@
-import { X } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
+import { X } from 'lucide-react';
 
 interface PracticeLevelModalProps {
   homeClassLevel: string;
@@ -10,44 +10,54 @@ interface PracticeLevelModalProps {
 
 export default function PracticeLevelModal({ homeClassLevel, onSelect, onClose }: PracticeLevelModalProps) {
   const allLevels = [
-    { value: 'B7', label: 'Basic 7', desc: 'Foundation topics' },
-    { value: 'B8', label: 'Basic 8', desc: 'Intermediate topics' },
-    { value: 'B9', label: 'Basic 9', desc: 'Advanced topics' },
+    { value: 'B7', label: 'Basic 7 (JHS 1)', desc: 'Foundation concepts' },
+    { value: 'B8', label: 'Basic 8 (JHS 2)', desc: 'Intermediate concepts' },
+    { value: 'B9', label: 'Basic 9 (JHS 3)', desc: 'Advanced & BECE prep' },
   ];
 
-  // Only show levels the learner is NOT in
-  const levels = allLevels.filter(l => l.value !== homeClassLevel);
+  const levels = homeClassLevel ? allLevels.filter((l) => l.value !== homeClassLevel) : allLevels;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <Card className="w-full max-w-sm" onClick={e => e.stopPropagation()}>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-zinc-900">Practice from Another Level</h2>
-            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
-              <X className="w-5 h-5 text-gray-400" />
-            </button>
-          </div>
-          <p className="text-sm text-gray-500 mb-5">
-            You're in <span className="font-semibold text-navy-700">{homeClassLevel}</span>. Pick another level to practice — this won't affect your mastery scores.
-          </p>
-          <div className="space-y-2">
-            {levels.map(level => (
-              <Button
-                key={level.value}
-                variant="outline"
-                onClick={() => onSelect(level.value)}
-                className="w-full justify-start h-auto py-3"
-              >
-                <div className="text-left">
-                  <p className="font-semibold">{level.label} ({level.value})</p>
-                  <p className="text-xs text-gray-500 font-normal">{level.desc}</p>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-sm">
+        <div className="flex items-center justify-between mb-2">
+          <DialogHeader className="mb-0">
+            <DialogTitle>Practice Another Level</DialogTitle>
+          </DialogHeader>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close level selector"
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-navy-900"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <p className="text-sm text-slate-600 mb-5">
+          {homeClassLevel ? (
+            <>
+              You are enrolled in <span className="font-bold text-navy-900">{homeClassLevel}</span>. Pick another level for ungraded adaptive practice:
+            </>
+          ) : (
+            'Pick a class level for ungraded adaptive practice:'
+          )}
+        </p>
+        <div className="space-y-2.5">
+          {levels.map((level) => (
+            <Button
+              key={level.value}
+              variant="outline"
+              onClick={() => onSelect(level.value)}
+              className="w-full justify-start h-auto py-3 px-4"
+            >
+              <div className="text-left">
+                <p className="font-semibold text-navy-900">{level.label}</p>
+                <p className="text-xs text-slate-500 font-normal">{level.desc}</p>
+              </div>
+            </Button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

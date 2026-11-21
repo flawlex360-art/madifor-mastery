@@ -9,8 +9,8 @@ export default function QuestionBuilderPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-zinc-900">Question Builder</h1>
-        <p className="text-gray-500">Create and manage questions for your topics</p>
+        <h1 className="text-2xl font-bold text-navy-900">Question Builder</h1>
+        <p className="text-sm text-slate-500">Create and manage assessment items for your topics</p>
       </div>
       <QuestionBuilder />
     </div>

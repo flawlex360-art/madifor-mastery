@@ -7,7 +7,7 @@ import AssessmentErrorBoundary from '@/components/assessment/AssessmentErrorBoun
 
 export default function ReviewPage() {
   const navigate = useNavigate();
-  const { startReviewSession, status, reset } = useAssessmentStore();
+  const { startReviewSession, reset } = useAssessmentStore();
 
   useEffect(() => {
     const session = getLearnerSession();
@@ -15,16 +15,25 @@ export default function ReviewPage() {
       navigate('/');
       return;
     }
-    if (status === 'idle') {
-      startReviewSession(session.learner_id);
-    }
-  }, [status, startReviewSession, navigate]);
+    startReviewSession(session.learner_id);
+
+    return () => {
+      useAssessmentStore.getState().reset();
+    };
+  }, [startReviewSession, navigate]);
 
   return (
     <AssessmentErrorBoundary onReset={() => { reset(); navigate('/learner/home'); }}>
       <AssessmentSession
-        topicName="Review Session"
-        onHome={() => { reset(); navigate('/learner/home'); }}
+        topicName="Spaced Repetition Review"
+        onRetry={() => {
+          const session = getLearnerSession();
+          if (session) startReviewSession(session.learner_id);
+        }}
+        onHome={() => {
+          reset();
+          navigate('/learner/home');
+        }}
       />
     </AssessmentErrorBoundary>
   );

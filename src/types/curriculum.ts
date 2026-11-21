@@ -1,4 +1,4 @@
-// Flawlex Mastery — Curriculum Types
+// Madifor Mastery — Curriculum Types
 
 export interface Subject {
   id: string;
@@ -57,16 +57,13 @@ export type QuestionType = 'multiple_choice' | 'fill_in_blank' | 'diagram_label'
 export type QuestionDifficulty = 'easy' | 'core' | 'bece_level';
 export type BloomsLevel = 'recall' | 'application' | 'analysis';
 
-// MCQ options: array of strings
-// Matching options: array of {left, right} pairs
 export type QuestionOptions = string[] | { left: string; right: string }[];
 
-// MCQ: index of correct option (0-based)
-// Fill-in-blank: string or number
+// MCQ: index of correct option (0-based) or numeric string
+// Fill-in-blank: string, number, or string[] of acceptable variations
 // Matching: mapping of left→right indices
-export type CorrectAnswer = number | string | Record<number, number>;
+export type CorrectAnswer = number | string | string[] | Record<number, number>;
 
-// Full curriculum tree for topic browser
 export interface CurriculumTree {
   subject: Subject;
   strands: (Strand & {

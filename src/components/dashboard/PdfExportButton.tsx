@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import Button from '@/components/ui/Button';
 import { Download, Loader2 } from 'lucide-react';
+import { sanitizeFilename } from '@/lib/utils';
+import { toast } from '@/stores/toastStore';
 
 interface LearnerReportData {
   learner_name: string;
@@ -36,12 +38,13 @@ export default function PdfExportButton({ learnerData, className }: PdfExportBut
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${learnerData.learner_name.replace(/\s+/g, '_')}-mastery-report.pdf`;
+      a.download = `${sanitizeFilename(learnerData.learner_name)}-mastery-report.pdf`;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success('PDF report generated.');
     } catch (err) {
       console.error('PDF generation failed:', err);
-      alert('Failed to generate PDF. Please try again.');
+      toast.error('Failed to generate PDF report. Please try again.');
     } finally {
       setGenerating(false);
     }

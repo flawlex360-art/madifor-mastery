@@ -4,6 +4,8 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import type { Question } from '@/types/curriculum';
+import { parseOptionsList, resolveCorrectOptionIndex } from '@/lib/grading';
+import { toast } from '@/stores/toastStore';
 
 interface QuestionFormProps {
   initialData?: Question | null;
@@ -11,21 +13,30 @@ interface QuestionFormProps {
   onCancel: () => void;
 }
 
+function getInitialOptions(rawOptions: unknown): string[] {
+  const parsed = parseOptionsList(rawOptions);
+  const padded = [...parsed.slice(0, 4)];
+  while (padded.length < 4) padded.push('');
+  return padded;
+}
+
+function getInitialFillInAnswer(rawAnswer: unknown): string {
+  if (typeof rawAnswer === 'string') return rawAnswer;
+  if (Array.isArray(rawAnswer)) return rawAnswer.map((v) => String(v)).join(', ');
+  return '';
+}
+
 export default function QuestionForm({ initialData, onSave, onCancel }: QuestionFormProps) {
   const [questionType, setQuestionType] = useState<string>(initialData?.question_type || 'multiple_choice');
   const [stem, setStem] = useState(initialData?.stem || '');
-  const [options, setOptions] = useState<string[]>(
-    Array.isArray(initialData?.options) ? (initialData.options as string[]) : ['', '', '', '']
-  );
-  const [correctIdx, setCorrectIdx] = useState<number>(
-    typeof initialData?.correct_answer === 'number' ? initialData.correct_answer : 0
-  );
-  const [fillInAnswer, setFillInAnswer] = useState<string>(
-    typeof initialData?.correct_answer === 'string' 
-      ? initialData.correct_answer 
-      : Array.isArray(initialData?.correct_answer) 
-        ? initialData.correct_answer.join(', ')
-        : ''
+  const [options, setOptions] = useState<string[]>(() => getInitialOptions(initialData?.options));
+  const [correctIdx, setCorrectIdx] = useState<number>(() => {
+    const parsedOpts = parseOptionsList(initialData?.options);
+    const resolved = resolveCorrectOptionIndex(initialData?.correct_answer, parsedOpts);
+    return resolved ?? 0;
+  });
+  const [fillInAnswer, setFillInAnswer] = useState<string>(() =>
+    getInitialFillInAnswer(initialData?.correct_answer)
   );
   const [explanation, setExplanation] = useState(initialData?.explanation || '');
   const [hints, setHints] = useState<string[]>(initialData?.hints || []);
@@ -37,27 +48,46 @@ export default function QuestionForm({ initialData, onSave, onCancel }: Question
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!stem.trim()) {
+      toast.error('Please enter a question stem.');
+      return;
+    }
+
+    if (!explanation.trim()) {
+      toast.error('Please enter an explanation.');
+      return;
+    }
+
     const data: Record<string, unknown> = {
       question_type: questionType,
-      stem,
-      explanation,
+      stem: stem.trim(),
+      explanation: explanation.trim(),
       hints: hints.length > 0 ? hints : null,
       difficulty,
       blooms_level: bloomsLevel,
       visibility,
-      diagram_url: null,
+      diagram_url: initialData?.diagram_url ?? null,
     };
 
     if (questionType === 'multiple_choice') {
-      data.options = options;
+      const cleanedOptions = options.map((o) => o.trim());
+      if (cleanedOptions.some((o) => !o)) {
+        toast.error('Please fill in all four MCQ options.');
+        return;
+      }
+      data.options = cleanedOptions;
       data.correct_answer = correctIdx;
     } else if (questionType === 'fill_in_blank') {
+      const acceptedAnswers = fillInAnswer
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (acceptedAnswers.length === 0) {
+        toast.error('Please enter at least one accepted answer.');
+        return;
+      }
       data.options = null;
-      // Pass as a JSON array to ensure PostgREST doesn't fail parsing raw strings into JSONB
-      data.correct_answer = fillInAnswer.split(',').map(s => s.trim()).filter(Boolean);
-    } else {
-      data.options = options;
-      data.correct_answer = correctIdx;
+      data.correct_answer = acceptedAnswers;
     }
 
     onSave(data);
@@ -75,15 +105,14 @@ export default function QuestionForm({ initialData, onSave, onCancel }: Question
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <h2 className="font-semibold text-zinc-900">
+    <Card className="border-slate-200 shadow-none">
+      <CardHeader className="pb-3">
+        <h2 className="font-semibold text-navy-900">
           {initialData ? 'Edit Question' : 'New Question'}
         </h2>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Question type */}
           <Select
             label="Question Type"
             value={questionType}
@@ -94,10 +123,9 @@ export default function QuestionForm({ initialData, onSave, onCancel }: Question
             onChange={(e) => setQuestionType(e.target.value)}
           />
 
-          {/* Stem */}
           <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1.5">
-              Question Stem
+            <label className="block text-sm font-medium text-navy-800 mb-1.5">
+              Question Stem <span className="text-rose-500">*</span>
             </label>
             <textarea
               value={stem}
@@ -105,27 +133,26 @@ export default function QuestionForm({ initialData, onSave, onCancel }: Question
               placeholder="Enter the question..."
               required
               rows={3}
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-zinc-900 placeholder:text-gray-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-400/20 transition-colors resize-y"
+              className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-navy-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-colors resize-y"
             />
           </div>
 
-          {/* MCQ options */}
           {questionType === 'multiple_choice' && (
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-navy-700">
+            <div className="space-y-2.5">
+              <label className="block text-sm font-medium text-navy-800">
                 Answer Options
               </label>
               {options.map((opt, i) => (
-                <div key={i} className="flex items-center gap-2">
+                <div key={i} className="flex items-center gap-2.5">
                   <input
                     type="radio"
                     name="correct"
                     checked={correctIdx === i}
                     onChange={() => setCorrectIdx(i)}
-                    className="w-4 h-4 text-zinc-900"
+                    className="w-4 h-4 text-indigo-600 focus:ring-indigo-500"
                     title="Mark as correct answer"
                   />
-                  <span className="text-xs font-medium text-gray-500 w-6">
+                  <span className="text-xs font-semibold text-slate-500 w-5">
                     {String.fromCharCode(65 + i)}
                   </span>
                   <Input
@@ -140,58 +167,55 @@ export default function QuestionForm({ initialData, onSave, onCancel }: Question
                   />
                 </div>
               ))}
-              <p className="text-xs text-gray-500">
-                Select the radio button next to the correct answer
+              <p className="text-xs text-slate-500">
+                Select the radio button next to the correct option.
               </p>
             </div>
           )}
 
-          {/* Fill-in-blank answer */}
           {questionType === 'fill_in_blank' && (
             <div>
               <Input
-                label="Correct Answer"
+                label="Accepted Answers"
                 value={fillInAnswer}
                 onChange={(e) => setFillInAnswer(e.target.value)}
-                placeholder="e.g. high low, higher lower"
+                placeholder="e.g. photosynthesis, chloroplast"
                 required
               />
-              <p className="text-xs text-gray-500 mt-1">
-                You can provide multiple acceptable answers separated by commas (e.g. <span className="font-mono bg-gray-100 px-1 py-0.5 rounded">high low, higher lower</span>).
+              <p className="text-xs text-slate-500 mt-1">
+                Separate multiple acceptable variations with commas (case-insensitive grading).
               </p>
             </div>
           )}
 
-          {/* Explanation */}
           <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1.5">
-              Explanation <span className="text-red-400">*</span>
+            <label className="block text-sm font-medium text-navy-800 mb-1.5">
+              Explanation <span className="text-rose-500">*</span>
             </label>
             <textarea
               value={explanation}
               onChange={(e) => setExplanation(e.target.value)}
-              placeholder="Shown when the learner gets it wrong. Explain the correct concept..."
+              placeholder="Shown when the learner answers incorrectly. Explain the key concept..."
               required
               rows={2}
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-zinc-900 placeholder:text-gray-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-400/20 transition-colors resize-y"
+              className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-navy-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-colors resize-y"
             />
           </div>
 
-          {/* Hints */}
           <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1.5">
+            <label className="block text-sm font-medium text-navy-800 mb-1.5">
               Hints (optional, progressive)
             </label>
             {hints.length > 0 && (
-              <div className="space-y-1 mb-2">
+              <div className="space-y-1.5 mb-2">
                 {hints.map((hint, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <span className="text-xs text-gray-400">{i + 1}.</span>
-                    <span className="flex-1 text-navy-700">{hint}</span>
+                  <div key={i} className="flex items-center gap-2 text-sm bg-slate-50 px-3 py-1.5 rounded-lg">
+                    <span className="text-xs text-slate-400 font-semibold">{i + 1}.</span>
+                    <span className="flex-1 text-navy-800">{hint}</span>
                     <button
                       type="button"
                       onClick={() => removeHint(i)}
-                      className="text-red-400 hover:text-red-600 text-xs"
+                      className="text-rose-500 hover:text-rose-700 text-xs font-medium"
                     >
                       Remove
                     </button>
@@ -203,7 +227,7 @@ export default function QuestionForm({ initialData, onSave, onCancel }: Question
               <Input
                 value={hintInput}
                 onChange={(e) => setHintInput(e.target.value)}
-                placeholder="Add a hint..."
+                placeholder="Add a progressive hint..."
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -217,8 +241,7 @@ export default function QuestionForm({ initialData, onSave, onCancel }: Question
             </div>
           </div>
 
-          {/* Metadata row */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Select
               label="Difficulty"
               value={difficulty}
@@ -251,7 +274,6 @@ export default function QuestionForm({ initialData, onSave, onCancel }: Question
             />
           </div>
 
-          {/* Actions */}
           <div className="flex gap-3 pt-2">
             <Button type="submit" className="flex-1">
               {initialData ? 'Update Question' : 'Save Question'}

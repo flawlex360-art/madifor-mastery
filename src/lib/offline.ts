@@ -1,9 +1,8 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
-const DB_NAME = 'flawlex-mastery';
-const DB_VERSION = 2;
+const DB_NAME = 'madifor-mastery';
+const DB_VERSION = 3;
 
-// Store names
 export const STORES = {
   PENDING_ATTEMPTS: 'pending_attempts',
   CACHED_QUESTIONS: 'cached_questions',
@@ -11,11 +10,11 @@ export const STORES = {
   ASSESSMENT_STATE: 'assessment_state',
 } as const;
 
-interface FlawlexDB {
+interface MadiforDB {
   [STORES.PENDING_ATTEMPTS]: {
     key: string;
     value: PendingAttempt;
-    indexes: { by_session: string };
+    indexes: { by_session: string; by_learner: string };
   };
   [STORES.CACHED_QUESTIONS]: {
     key: string;
@@ -45,11 +44,14 @@ export interface PendingAttempt {
   session_id: string;
   session_question_index: number;
   created_at: string;
+  retries?: number;
+  last_error?: string;
 }
 
 export interface CachedQuestion {
   id: string;
   topic_id: string;
+  owner_teacher_id?: string | null;
   question_type: string;
   stem: string;
   options: unknown;
@@ -58,7 +60,9 @@ export interface CachedQuestion {
   hints: string[] | null;
   difficulty: string;
   blooms_level: string;
+  diagram_url?: string | null;
   visibility: string;
+  cached_at?: number;
 }
 
 export interface CachedCurriculum {
@@ -69,71 +73,84 @@ export interface CachedCurriculum {
 }
 
 export interface SavedAssessmentState {
-  id: string; // learner_id + topic_id
+  id: string;
   session_id: string;
   learner_id: string;
-  topic_id: string;
+  topic_id: string | null;
   questions: Record<string, unknown>[];
   answers: [string, Record<string, unknown>][];
   current_index: number;
   practice_mode: boolean;
+  is_review_mode?: boolean;
   saved_at: string;
 }
 
-let dbPromise: Promise<IDBPDatabase<FlawlexDB>> | null = null;
+let dbPromise: Promise<IDBPDatabase<MadiforDB>> | null = null;
 
-function getDB(): Promise<IDBPDatabase<FlawlexDB>> {
+function getDB(): Promise<IDBPDatabase<MadiforDB>> {
   if (!dbPromise) {
-    dbPromise = openDB<FlawlexDB>(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion, _newVersion, tx) {
-        // Pending attempts
+    dbPromise = openDB<MadiforDB>(DB_NAME, DB_VERSION, {
+      async upgrade(db, oldVersion, _newVersion, tx) {
         if (!db.objectStoreNames.contains(STORES.PENDING_ATTEMPTS)) {
           const store = db.createObjectStore(STORES.PENDING_ATTEMPTS, { keyPath: 'id' });
           store.createIndex('by_session', 'session_id');
+          store.createIndex('by_learner', 'learner_id');
+        } else {
+          const store = tx.objectStore(STORES.PENDING_ATTEMPTS);
+          if (!store.indexNames.contains('by_learner')) {
+            store.createIndex('by_learner', 'learner_id');
+          }
         }
 
-        // Cached questions
         if (!db.objectStoreNames.contains(STORES.CACHED_QUESTIONS)) {
           const store = db.createObjectStore(STORES.CACHED_QUESTIONS, { keyPath: 'id' });
           store.createIndex('by_topic', 'topic_id');
         }
 
-        // Cached curriculum
         if (!db.objectStoreNames.contains(STORES.CACHED_CURRICULUM)) {
           db.createObjectStore(STORES.CACHED_CURRICULUM, { keyPath: 'id' });
         }
 
-        // Assessment state (for browser refresh recovery)
         if (!db.objectStoreNames.contains(STORES.ASSESSMENT_STATE)) {
           db.createObjectStore(STORES.ASSESSMENT_STATE, { keyPath: 'id' });
         }
 
-        // When upgrading from DB_VERSION 1 to 2, purge stale cached questions and ongoing assessment state
-        if (oldVersion < 2) {
+        if (oldVersion > 0 && oldVersion < DB_VERSION) {
           try {
-            tx.objectStore(STORES.CACHED_QUESTIONS).clear();
-            tx.objectStore(STORES.ASSESSMENT_STATE).clear();
+            await tx.objectStore(STORES.CACHED_QUESTIONS).clear();
+            await tx.objectStore(STORES.ASSESSMENT_STATE).clear();
           } catch (e) {
             console.warn('Could not clear legacy cache stores:', e);
           }
         }
       },
+    }).catch((err) => {
+      dbPromise = null;
+      throw err;
     });
   }
   return dbPromise;
 }
 
 // ============================================================
-// Pending Attempts (offline queue)
+// Pending Attempts (offline queue — scoped per learner_id)
 // ============================================================
 
 export async function savePendingAttempt(attempt: PendingAttempt): Promise<void> {
   const db = await getDB();
+  await db.put(STORES.PENDING_ATTEMPTS, { retries: 0, ...attempt });
+}
+
+export async function updatePendingAttempt(attempt: PendingAttempt): Promise<void> {
+  const db = await getDB();
   await db.put(STORES.PENDING_ATTEMPTS, attempt);
 }
 
-export async function getPendingAttempts(): Promise<PendingAttempt[]> {
+export async function getPendingAttempts(learnerId?: string): Promise<PendingAttempt[]> {
   const db = await getDB();
+  if (learnerId) {
+    return db.getAllFromIndex(STORES.PENDING_ATTEMPTS, 'by_learner', learnerId);
+  }
   return db.getAll(STORES.PENDING_ATTEMPTS);
 }
 
@@ -152,8 +169,11 @@ export async function clearPendingAttempts(): Promise<void> {
   await db.clear(STORES.PENDING_ATTEMPTS);
 }
 
-export async function getPendingAttemptCount(): Promise<number> {
+export async function getPendingAttemptCount(learnerId?: string): Promise<number> {
   const db = await getDB();
+  if (learnerId) {
+    return db.countFromIndex(STORES.PENDING_ATTEMPTS, 'by_learner', learnerId);
+  }
   return db.count(STORES.PENDING_ATTEMPTS);
 }
 
@@ -161,25 +181,25 @@ export async function getPendingAttemptCount(): Promise<number> {
 // Cached Questions (offline assessment)
 // ============================================================
 
-const MAX_CACHED_QUESTIONS = 500; // H-6: Cap cache size for low-end devices
+const MAX_CACHED_QUESTIONS = 500;
 
 export async function cacheQuestions(questions: CachedQuestion[]): Promise<void> {
   const db = await getDB();
+  const now = Date.now();
   const tx = db.transaction(STORES.CACHED_QUESTIONS, 'readwrite');
   for (const q of questions) {
-    await tx.store.put(q);
+    await tx.store.put({ ...q, cached_at: now });
   }
   await tx.done;
 
-  // H-6: Enforce cache size limit — remove oldest entries if over cap
-  const count = await db.count(STORES.CACHED_QUESTIONS);
-  if (count > MAX_CACHED_QUESTIONS) {
-    const excess = count - MAX_CACHED_QUESTIONS;
-    const allKeys = await db.getAllKeys(STORES.CACHED_QUESTIONS);
-    const keysToDelete = allKeys.slice(0, excess);
+  const allItems = await db.getAll(STORES.CACHED_QUESTIONS);
+  if (allItems.length > MAX_CACHED_QUESTIONS) {
+    const excess = allItems.length - MAX_CACHED_QUESTIONS;
+    allItems.sort((a, b) => (a.cached_at ?? 0) - (b.cached_at ?? 0));
+    const toDelete = allItems.slice(0, excess);
     const cleanupTx = db.transaction(STORES.CACHED_QUESTIONS, 'readwrite');
-    for (const key of keysToDelete) {
-      await cleanupTx.store.delete(key);
+    for (const item of toDelete) {
+      await cleanupTx.store.delete(item.id);
     }
     await cleanupTx.done;
   }
@@ -219,9 +239,19 @@ export async function clearAssessmentState(id: string): Promise<void> {
   await db.delete(STORES.ASSESSMENT_STATE, id);
 }
 
-// ============================================================
-// Utilities
-// ============================================================
+export async function clearSessionRecoveryAndQuestionCache(): Promise<void> {
+  try {
+    const db = await getDB();
+    await db.clear(STORES.ASSESSMENT_STATE);
+    await db.clear(STORES.CACHED_QUESTIONS);
+    // Clean legacy DB if present on device
+    if (typeof indexedDB !== 'undefined' && typeof indexedDB.deleteDatabase === 'function') {
+      indexedDB.deleteDatabase('flawlex-mastery');
+    }
+  } catch {
+    // Ignore storage errors during logout cleanup
+  }
+}
 
 export function isOnline(): boolean {
   return navigator.onLine;

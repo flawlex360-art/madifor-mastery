@@ -9,6 +9,8 @@ export interface Toast {
   duration?: number;
 }
 
+const activeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 interface ToastState {
   toasts: Toast[];
   addToast: (type: ToastType, message: string, duration?: number) => void;
@@ -24,22 +26,32 @@ export const useToastStore = create<ToastState>((set) => ({
       toasts: [...state.toasts, { id, type, message, duration }],
     }));
     if (duration > 0) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        activeTimers.delete(id);
         set((state) => ({
           toasts: state.toasts.filter((t) => t.id !== id),
         }));
       }, duration);
+      activeTimers.set(id, timer);
     }
   },
   removeToast: (id) => {
+    const timer = activeTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      activeTimers.delete(id);
+    }
     set((state) => ({
       toasts: state.toasts.filter((t) => t.id !== id),
     }));
   },
-  clearAll: () => set({ toasts: [] }),
+  clearAll: () => {
+    activeTimers.forEach((timer) => clearTimeout(timer));
+    activeTimers.clear();
+    set({ toasts: [] });
+  },
 }));
 
-// Convenience functions
 export const toast = {
   success: (message: string, duration?: number) => useToastStore.getState().addToast('success', message, duration),
   error: (message: string, duration?: number) => useToastStore.getState().addToast('error', message, duration),

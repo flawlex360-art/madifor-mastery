@@ -1,4 +1,4 @@
-// Flawlex Mastery — Auth Types
+// Madifor Mastery — Auth Types
 
 export interface Teacher {
   id: string;
@@ -6,9 +6,9 @@ export interface Teacher {
   full_name: string;
   email: string;
   role: 'teacher' | 'school_admin';
-  is_admin?: boolean;
-  status?: 'active' | 'suspended';
-  school_name?: string;
+  is_admin: boolean;
+  status: 'active' | 'suspended';
+  school_name?: string | null;
   created_at: string;
 }
 
@@ -36,12 +36,10 @@ export interface Learner {
   school_id: string | null;
   display_name: string;
   learner_code: string;
-  email?: string;
-  login_password?: string;
+  email?: string | null;
   created_at: string;
 }
 
-// Learner session (stored in localStorage)
 export interface LearnerSession {
   learner_id: string;
   class_id: string;
@@ -51,7 +49,6 @@ export interface LearnerSession {
   email?: string;
 }
 
-// Practice context
 export interface PracticeContext {
   practice_class_level: 'B7' | 'B8' | 'B9';
 }

@@ -1,171 +1,234 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAssessmentStore } from '@/stores/assessmentStore';
-import { getLearnerSession, refreshLearnerSession, getPracticeContext, setPracticeContext, clearPracticeContext } from '@/api/auth';
+import {
+  getLearnerSession,
+  refreshLearnerSession,
+  getPracticeContext,
+  setPracticeContext,
+  clearPracticeContext,
+} from '@/api/auth';
 import { getLearnerHomepageData } from '@/api/curriculum';
 import TopicCard from '@/components/curriculum/TopicCard';
 import ReviewBadge from '@/components/learner/ReviewBadge';
 import PracticeLevelModal from '@/components/learner/PracticeLevelModal';
 import PracticeModeBanner from '@/components/learner/PracticeModeBanner';
 import PsychometricProfile from '@/components/learner/PsychometricProfile';
+import Button from '@/components/ui/Button';
 import type { Topic } from '@/types/curriculum';
-import { ChevronDown, ChevronRight, BookOpen, Search, Clock } from 'lucide-react';
+import { ChevronDown, ChevronRight, BookOpen, Search, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+
+interface HomepageTopic extends Topic {
+  strand_id?: string;
+  strand_name?: string;
+  strand_code?: string;
+  sub_strand_name?: string;
+  question_count?: number;
+}
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const [session, setSession] = useState(getLearnerSession());
-  const [topics, setTopics] = useState<Topic[]>([]);
+  const [session, setSession] = useState(getLearnerSession);
+  const [topics, setTopics] = useState<HomepageTopic[]>([]);
   const [questionCounts, setQuestionCounts] = useState<Record<string, number>>({});
   const [masteryMap, setMasteryMap] = useState<Record<string, { pct: number; status: string }>>({});
   const [dueReviewCount, setDueReviewCount] = useState(0);
   const [expandedStrands, setExpandedStrands] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [practiceCtx, setPracticeCtx] = useState(getPracticeContext());
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [practiceCtx, setPracticeCtx] = useState(getPracticeContext);
   const [showLevelModal, setShowLevelModal] = useState(false);
   const [topicSearch, setTopicSearch] = useState('');
   const [recentTopicIds, setRecentTopicIds] = useState<string[]>([]);
   const { prefetchTopic } = useAssessmentStore();
+  const requestSeqRef = useRef(0);
 
-  useEffect(() => {
-    const init = async () => {
-      const s = getLearnerSession();
-      if (!s) { navigate('/'); return; }
-      // Refresh session from DB if class_level is missing (stale session)
-      const refreshed = await refreshLearnerSession();
-      if (refreshed) setSession(refreshed);
-      loadData();
-    };
-    init();
-  }, []);
+  const loadData = useCallback(async (overrideLevel?: string | null) => {
+    const reqId = ++requestSeqRef.current;
+    const currentSession = getLearnerSession();
+    if (!currentSession) return;
 
-  const loadData = async () => {
-    try {
-      const session = getLearnerSession();
-      if (!session) return;
+    const ctx = overrideLevel === undefined ? getPracticeContext() : overrideLevel ? { practice_class_level: overrideLevel } : null;
+    const targetLevel = ctx?.practice_class_level ?? currentSession.class_level ?? 'B7';
+    setLoadError(null);
 
-      const ctx = getPracticeContext();
-      const targetLevel = ctx?.practice_class_level ?? session.class_level;
-
-      // 1. Fast path: load from memory/sessionStorage immediately
-      const cacheKey = `flawlex_home_${session.learner_id}_${targetLevel}`;
-      const cached = sessionStorage.getItem(cacheKey);
-      if (cached) {
-        try {
-          const data = JSON.parse(cached);
-          setTopics(data.topics);
-          setQuestionCounts(data.questionCounts);
-          setMasteryMap(data.masteryMap);
-          setDueReviewCount(data.dueReviewCount);
-          setLoading(false); // Unblock UI immediately!
-        } catch { /* ignore */ }
-      } else {
+    const cacheKey = `flawlex_home_${currentSession.learner_id}_${targetLevel}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        setTopics(parsed.topics || []);
+        setQuestionCounts(parsed.questionCounts || {});
+        setMasteryMap(parsed.masteryMap || {});
+        setDueReviewCount(parsed.dueReviewCount || 0);
+        setLoading(false);
+      } catch {
         setLoading(true);
       }
+    } else {
+      setLoading(true);
+    }
 
-      // 2. Background update: fetch fresh data using our optimized single-query RPC
+    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data: any = await getLearnerHomepageData(session.learner_id, targetLevel);
+      const data: any = await getLearnerHomepageData(currentSession.learner_id, targetLevel);
+      if (reqId !== requestSeqRef.current) return;
 
-      const newTopics = data.topics || [];
+      const newTopics: HomepageTopic[] = data?.topics || [];
       const newQuestionCounts: Record<string, number> = {};
-      newTopics.forEach((t: any) => {
+      for (const t of newTopics) {
         newQuestionCounts[t.id] = t.question_count || 0;
-      });
+      }
 
       const newMasteryMap: Record<string, { pct: number; status: string }> = {};
-      (data.mastery || []).forEach((m: any) => {
-        newMasteryMap[m.topic_id] = { pct: m.pct, status: m.status };
-      });
+      for (const m of data?.mastery || []) {
+        newMasteryMap[m.topic_id] = { pct: Number(m.pct ?? 0), status: m.status };
+      }
 
-      const newReviewCount = data.dueReviewCount || 0;
+      const newReviewCount = Number(data?.dueReviewCount || 0);
 
-      // Update state with fresh data
       setTopics(newTopics);
       setQuestionCounts(newQuestionCounts);
       setMasteryMap(newMasteryMap);
       setDueReviewCount(newReviewCount);
 
-      // Save to fast cache
-      sessionStorage.setItem(cacheKey, JSON.stringify({
-        topics: newTopics,
-        questionCounts: newQuestionCounts,
-        masteryMap: newMasteryMap,
-        dueReviewCount: newReviewCount
-      }));
+      if (newTopics.length > 0) {
+        const firstKey = newTopics[0].strand_code || newTopics[0].strand_name || 'all';
+        setExpandedStrands((prev) => (prev.size === 0 ? new Set([firstKey]) : prev));
+      }
 
-      // Load recent topics from localStorage
-      const stored = localStorage.getItem(`flawlex_recent_topics_${session.learner_id}`);
+      sessionStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          topics: newTopics,
+          questionCounts: newQuestionCounts,
+          masteryMap: newMasteryMap,
+          dueReviewCount: newReviewCount,
+        })
+      );
+
+      const stored = localStorage.getItem(`flawlex_recent_topics_${currentSession.learner_id}`);
       if (stored) {
         try {
           const ids = JSON.parse(stored) as string[];
-          setRecentTopicIds(ids.filter((id) => newTopics.some((t: Topic) => t.id === id)));
-        } catch { /* ignore */ }
+          if (Array.isArray(ids)) {
+            setRecentTopicIds(ids.filter((id) => newTopics.some((t) => t.id === id)));
+          }
+        } catch {
+          // Ignore corrupted recent topics storage
+        }
       }
     } catch (err) {
-      console.error('Failed to load data:', err);
+      if (reqId !== requestSeqRef.current) return;
+      if (!cached) {
+        setLoadError(err instanceof Error ? err.message : 'Unable to load topics. Check your connection.');
+      }
     } finally {
-      setLoading(false);
+      if (reqId === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
 
-  const startAssessment = (topic: Topic) => {
-    // Track recent topics
+  useEffect(() => {
+    const init = async () => {
+      const s = getLearnerSession();
+      if (!s) {
+        navigate('/');
+        return;
+      }
+      const refreshed = await refreshLearnerSession().catch(() => s);
+      if (refreshed) {
+        setSession(refreshed);
+        loadData();
+      } else if (!navigator.onLine) {
+        loadData();
+      } else {
+        navigate('/learner/login');
+      }
+    };
+    init();
+  }, [navigate, loadData]);
+
+  const startAssessment = (topic: HomepageTopic) => {
+    if ((questionCounts[topic.id] || 0) <= 0) return;
     if (session) {
-      const stored = localStorage.getItem(`flawlex_recent_topics_${session.learner_id}`);
-      let recent: string[] = stored ? JSON.parse(stored) : [];
+      let recent: string[] = [];
+      try {
+        const stored = localStorage.getItem(`flawlex_recent_topics_${session.learner_id}`);
+        const parsed = stored ? JSON.parse(stored) : [];
+        if (Array.isArray(parsed)) recent = parsed;
+      } catch {
+        recent = [];
+      }
       recent = [topic.id, ...recent.filter((id) => id !== topic.id)].slice(0, 5);
       localStorage.setItem(`flawlex_recent_topics_${session.learner_id}`, JSON.stringify(recent));
     }
     navigate(`/learner/assessment/${topic.id}`, { state: { topicName: topic.name } });
   };
 
-  // Filter topics by search
   const filteredTopics = useMemo(() => {
     if (!topicSearch.trim()) return topics;
     const q = topicSearch.toLowerCase().trim();
     return topics.filter(
-      (t) => t.name.toLowerCase().includes(q) || t.code.toLowerCase().includes(q)
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.code.toLowerCase().includes(q) ||
+        (t.strand_name || '').toLowerCase().includes(q)
     );
   }, [topics, topicSearch]);
 
-  // Recent topics (not filtered by search)
+  const strandGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; name: string; topics: HomepageTopic[] }>();
+    for (const t of filteredTopics) {
+      const fallbackPrefix = t.code?.includes('.') ? t.code.split('.').slice(0, 2).join('.') : 'Other';
+      const key = t.strand_code || t.strand_name || fallbackPrefix;
+      const name = t.strand_name || fallbackPrefix;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.topics.push(t);
+      } else {
+        groups.set(key, { key, name, topics: [t] });
+      }
+    }
+    return Array.from(groups.values());
+  }, [filteredTopics]);
+
   const recentTopics = useMemo(() => {
     if (recentTopicIds.length === 0) return [];
     return recentTopicIds
       .map((id) => topics.find((t) => t.id === id))
-      .filter(Boolean) as Topic[];
+      .filter((t): t is HomepageTopic => Boolean(t));
   }, [topics, recentTopicIds]);
 
-  // Background Prefetching
+  // Background prefetch deduplicated IDs once on topic load
   useEffect(() => {
-    if (topics.length > 0) {
-      // Prefetch recent topics
-      recentTopics.forEach(t => prefetchTopic(t.id));
-      // Prefetch top 3 topics
-      topics.slice(0, 3).forEach(t => prefetchTopic(t.id));
-    }
+    if (topics.length === 0) return;
+    const idsToPrefetch = Array.from(
+      new Set([...recentTopics.map((t) => t.id), ...topics.slice(0, 3).map((t) => t.id)])
+    );
+    idsToPrefetch.forEach((id) => prefetchTopic(id));
   }, [topics, recentTopics, prefetchTopic]);
 
   const handlePracticeLevelSelect = (level: string) => {
     setPracticeContext({ practice_class_level: level });
     setPracticeCtx({ practice_class_level: level });
     setShowLevelModal(false);
-    setLoading(true);
-    loadData();
+    setExpandedStrands(new Set());
+    loadData(level);
   };
 
   const handleExitPractice = () => {
     clearPracticeContext();
     setPracticeCtx(null);
-    setLoading(true);
-    loadData();
+    setExpandedStrands(new Set());
+    loadData(null);
   };
 
   if (!session) return null;
 
   return (
     <div className="space-y-6">
-      {/* Practice mode banner */}
       {practiceCtx && (
         <PracticeModeBanner
           practiceLevel={practiceCtx.practice_class_level}
@@ -173,73 +236,73 @@ export default function HomePage() {
         />
       )}
 
-      {/* AI Predicted Score */}
-      {!practiceCtx && session?.learner_id && (
+      {!practiceCtx && session.learner_id && (
         <PsychometricProfile learnerId={session.learner_id} />
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-slate-200/80 pb-5">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-zinc-900">
-              {practiceCtx ? `Practicing ${practiceCtx.practice_class_level}` : `Welcome, ${session.display_name}!`}
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-navy-900">
+              {practiceCtx
+                ? `Practicing ${practiceCtx.practice_class_level}`
+                : `Welcome back, ${session.display_name}!`}
             </h1>
             {session.class_level && !practiceCtx && (
-              <span className="px-3 py-1 text-sm font-bold rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200">
+              <span className="px-3 py-1 text-xs font-bold rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
                 {session.class_level}
               </span>
             )}
           </div>
-          <p className="text-gray-500">
-            {practiceCtx ? 'These topics are for practice only' : 'Choose a topic to start learning'}
+          <p className="text-sm text-slate-500 mt-1">
+            {practiceCtx ? 'Select any topic for ungraded practice' : 'Choose a topic below to start or continue mastering Science'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2.5 flex-wrap">
           {!practiceCtx && (
-            <ReviewBadge count={dueReviewCount} onClick={() => {
-              if (dueReviewCount > 0) navigate('/learner/review');
-            }} />
+            <ReviewBadge
+              count={dueReviewCount}
+              onClick={() => {
+                if (dueReviewCount > 0) navigate('/learner/review');
+              }}
+            />
           )}
           {practiceCtx ? (
-            <button
-              onClick={handleExitPractice}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-600 border border-amber-300 rounded-lg hover:bg-amber-50 transition-colors"
-            >
+            <Button variant="outline" size="sm" onClick={handleExitPractice}>
               Back to My Class
-            </button>
+            </Button>
           ) : (
-            <button
-              onClick={() => setShowLevelModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-purple-600 border border-purple-300 rounded-lg hover:bg-purple-50 transition-colors"
-            >
-              <BookOpen className="w-4 h-4" />
+            <Button variant="outline" size="sm" onClick={() => setShowLevelModal(true)}>
+              <BookOpen className="w-4 h-4 mr-1.5 text-indigo-600" />
               Practice Other Levels
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
       {/* Topic search */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
-          placeholder="Search topics by name or code..."
+          aria-label="Search topics"
+          placeholder="Search topics by name, strand, or code..."
           value={topicSearch}
           onChange={(e) => setTopicSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-2.5 text-sm border border-zinc-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900/20 focus:border-zinc-900"
+          className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl bg-white text-navy-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
         />
       </div>
 
-      {/* Recent topics */}
+      {/* Recently Practiced */}
       {!topicSearch && recentTopics.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Clock className="w-4 h-4 text-gray-400" />
-            <h2 className="text-sm font-medium text-gray-500">Recently Practiced</h2>
+          <div className="flex items-center gap-2 mb-3">
+            <Clock className="w-4 h-4 text-slate-400" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">Recently Practiced</h2>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {recentTopics.map((topic) => (
               <TopicCard
                 key={`recent-${topic.id}`}
@@ -247,7 +310,13 @@ export default function HomePage() {
                 code={topic.code}
                 questionCount={questionCounts[topic.id] || 0}
                 masteryPct={masteryMap[topic.id]?.pct ?? 0}
-                status={(masteryMap[topic.id]?.status as 'not_started' | 'in_progress' | 'first_pass_mastered' | 'retained_mastered') ?? 'not_started'}
+                status={
+                  (masteryMap[topic.id]?.status as
+                    | 'not_started'
+                    | 'in_progress'
+                    | 'first_pass_mastered'
+                    | 'retained_mastered') ?? 'not_started'
+                }
                 onClick={() => startAssessment(topic)}
                 onHover={() => prefetchTopic(topic.id)}
               />
@@ -256,50 +325,74 @@ export default function HomePage() {
         </div>
       )}
 
+      {/* Strand Accordions */}
       {loading ? (
-        <div className="text-center py-8 text-gray-500">Loading...</div>
-      ) : filteredTopics.length === 0 ? (
-        <div className="text-center py-8 text-gray-400">
-          {topicSearch ? 'No topics match your search.' : 'No topics available.'}
+        <div className="text-center py-12 text-slate-500 text-sm">Loading curriculum topics...</div>
+      ) : loadError ? (
+        <div className="text-center py-10 bg-red-50 border border-red-200 rounded-2xl p-6">
+          <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
+          <p className="text-sm font-medium text-red-800 mb-3">{loadError}</p>
+          <Button variant="outline" size="sm" onClick={() => loadData()}>
+            <RefreshCw className="w-4 h-4 mr-1.5" />
+            Retry
+          </Button>
+        </div>
+      ) : strandGroups.length === 0 ? (
+        <div className="text-center py-10 text-slate-400 text-sm">
+          {topicSearch ? 'No topics match your search.' : 'No topics available for this level.'}
         </div>
       ) : (
-        <div className="space-y-2">
-          {Array.from(new Set(filteredTopics.map(t => t.code.split('.').slice(0, 2).join('.')))).map(strandCode => {
-            const strandTopics = filteredTopics.filter(t => t.code.startsWith(strandCode + '.'));
-            const strandName = strandTopics.length > 0 ? strandTopics[0].code.split('.').slice(0, 2).join('.') : strandCode;
-            
+        <div className="space-y-3">
+          {strandGroups.map((group) => {
+            const isExpanded = Boolean(topicSearch.trim()) || expandedStrands.has(group.key);
             return (
-              <div key={strandCode} className="border rounded-xl overflow-hidden">
+              <div key={group.key} className="border border-slate-200/90 rounded-2xl overflow-hidden bg-white shadow-sm">
                 <button
+                  type="button"
                   onClick={() => {
-                    setExpandedStrands(prev => {
+                    setExpandedStrands((prev) => {
                       const next = new Set(prev);
-                      next.has(strandCode) ? next.delete(strandCode) : next.add(strandCode);
+                      if (next.has(group.key)) {
+                        next.delete(group.key);
+                      } else {
+                        next.add(group.key);
+                      }
                       return next;
                     });
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-3 bg-zinc-50 hover:bg-zinc-100 transition-colors"
+                  className="w-full flex items-center justify-between gap-3 px-5 py-4 bg-slate-50/70 hover:bg-slate-100/70 transition-colors"
                 >
-                  {expandedStrands.has(strandCode) ? (
-                    <ChevronDown className="w-5 h-5 text-zinc-600" />
-                  ) : (
-                    <ChevronRight className="w-5 h-5 text-zinc-600" />
-                  )}
-                  <div className="text-left">
-                    <p className="font-semibold text-zinc-900">{strandName}</p>
-                    <p className="text-xs text-gray-500">{strandTopics.length} topics</p>
+                  <div className="flex items-center gap-3 text-left min-w-0">
+                    {isExpanded ? (
+                      <ChevronDown className="w-5 h-5 text-navy-700 flex-shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-5 h-5 text-navy-700 flex-shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-bold text-navy-900 truncate">{group.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {group.topics.length} {group.topics.length === 1 ? 'topic' : 'topics'}
+                      </p>
+                    </div>
                   </div>
                 </button>
-                {expandedStrands.has(strandCode) && (
-                  <div className="p-4 space-y-2">
-                    {strandTopics.map(topic => (
+
+                {isExpanded && (
+                  <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-slate-100">
+                    {group.topics.map((topic) => (
                       <TopicCard
                         key={topic.id}
                         name={topic.name}
                         code={topic.code}
                         questionCount={questionCounts[topic.id] || 0}
                         masteryPct={masteryMap[topic.id]?.pct ?? 0}
-                        status={(masteryMap[topic.id]?.status as 'not_started' | 'in_progress' | 'first_pass_mastered' | 'retained_mastered') ?? 'not_started'}
+                        status={
+                          (masteryMap[topic.id]?.status as
+                            | 'not_started'
+                            | 'in_progress'
+                            | 'first_pass_mastered'
+                            | 'retained_mastered') ?? 'not_started'
+                        }
                         onClick={() => startAssessment(topic)}
                         onHover={() => prefetchTopic(topic.id)}
                       />
@@ -312,7 +405,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Level selection modal */}
       {showLevelModal && (
         <PracticeLevelModal
           homeClassLevel={session.class_level}

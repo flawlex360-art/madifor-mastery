@@ -1,59 +1,95 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getSubjects, getCurriculumTree, getQuestionsByTopic, updateQuestionTopic } from '@/api/curriculum';
 import { Card } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import type { Subject, Topic, Question } from '@/types/curriculum';
 import { useSelectedClass } from '@/context/SelectedClassContext';
-import { Folder, FolderOpen, FileText, ChevronRight, ChevronDown, Link, Loader2 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { Folder, FolderOpen, FileText, ChevronRight, ChevronDown, ArrowRightLeft, Loader2 } from 'lucide-react';
 import LinkQuestionsModal from '@/components/curriculum/LinkQuestionsModal';
 import { toast } from '@/stores/toastStore';
 import Select from '@/components/ui/Select';
 
+interface TreeSubStrand {
+  id: string;
+  name: string;
+  topics: Topic[];
+}
+
+interface TreeStrand {
+  id: string;
+  name: string;
+  sub_strands: TreeSubStrand[];
+}
+
+interface CurriculumTreeData {
+  strands: TreeStrand[];
+}
+
 export default function CurriculumPage() {
+  const { teacher } = useAuth();
   const { selectedClass } = useSelectedClass();
   const classLevel = selectedClass?.class_level || 'B8';
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [curriculumTree, setCurriculumTree] = useState<any>(null);
+  const [curriculumTree, setCurriculumTree] = useState<CurriculumTreeData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Tree state
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
 
-  // Topic Details state
   const [topicQuestions, setTopicQuestions] = useState<Question[]>([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
 
-  useEffect(() => {
-    getSubjects().then((s) => {
-      setSubjects(s);
-      if (s.length > 0) {
-        setSelectedSubjectId(s[0].id);
-        loadTree(s[0].id);
-      }
-    });
-  }, [classLevel]);
-
-  const loadTree = async (subjectId: string) => {
+  const loadTree = useCallback(async (subjectId: string) => {
     setLoading(true);
     setSelectedTopic(null);
+    setTopicQuestions([]);
     try {
-      const tree = await getCurriculumTree(subjectId);
+      const tree = (await getCurriculumTree(subjectId)) as CurriculumTreeData;
       setCurriculumTree(tree);
-      
-      // Auto-expand all strands initially for better UX
       const newExpanded = new Set<string>();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tree.strands.forEach((s: any) => newExpanded.add(s.id));
+      tree.strands.forEach((s) => newExpanded.add(s.id));
       setExpandedNodes(newExpanded);
+    } catch (err) {
+      console.error('Failed to load curriculum tree:', err);
+      toast.error('Failed to load curriculum structure.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getSubjects()
+      .then((s) => {
+        if (!active) return;
+        setSubjects(s);
+        if (s.length > 0) {
+          setSelectedSubjectId(s[0].id);
+          loadTree(s[0].id);
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load subjects:', err);
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [loadTree]);
+
+  // Clear selected topic if class level changes and topic no longer belongs to it
+  useEffect(() => {
+    if (selectedTopic && selectedTopic.class_level !== classLevel) {
+      setSelectedTopic(null);
+      setTopicQuestions([]);
+    }
+  }, [classLevel, selectedTopic]);
 
   const handleSubjectChange = (subjectId: string) => {
     setSelectedSubjectId(subjectId);
@@ -61,10 +97,12 @@ export default function CurriculumPage() {
   };
 
   const toggleNode = (id: string) => {
-    const newSet = new Set(expandedNodes);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
-    setExpandedNodes(newSet);
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const handleSelectTopic = async (topic: Topic) => {
@@ -73,53 +111,67 @@ export default function CurriculumPage() {
     try {
       const qs = await getQuestionsByTopic(topic.id);
       setTopicQuestions(qs);
+    } catch (err) {
+      console.error('Failed to load topic questions:', err);
+      toast.error('Failed to load questions for this topic.');
     } finally {
       setQuestionsLoading(false);
     }
   };
 
-  const handleLinkQuestions = async (questionIds: string[]) => {
+  const handleMoveQuestions = async (questionIds: string[]) => {
     if (!selectedTopic) return;
     try {
-      await updateQuestionTopic(questionIds, selectedTopic.id);
-      toast.success(`Successfully linked ${questionIds.length} question(s)`);
-      // Reload questions for this topic
+      const count = await updateQuestionTopic(questionIds, selectedTopic.id);
+      toast.success(`Moved ${count} question${count !== 1 ? 's' : ''} to ${selectedTopic.name}`);
       const qs = await getQuestionsByTopic(selectedTopic.id);
       setTopicQuestions(qs);
     } catch (err) {
-      toast.error('Failed to link questions');
+      console.error('Failed to move questions:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to move selected questions');
+      throw err;
     }
   };
 
-  // Get all topic IDs in the current subject for the linker modal
-  const allTopicIdsInSubject = curriculumTree ? 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    curriculumTree.strands.flatMap((s: any) => 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      s.sub_strands.flatMap((ss: any) => 
-        ss.topics.map((t: Topic) => t.id)
-      )
-    ) : [];
+  const allTopicIdsInSubject = useMemo(
+    () =>
+      curriculumTree
+        ? curriculumTree.strands.flatMap((s) =>
+            s.sub_strands.flatMap((ss) => ss.topics.map((t) => t.id))
+          )
+        : [],
+    [curriculumTree]
+  );
 
-    // Filter curriculum tree based on classLevel
-    const filteredStrands = curriculumTree?.strands?.map((strand: any) => {
-      const filteredSubStrands = strand.sub_strands?.map((ss: any) => {
-        const filteredTopics = ss.topics?.filter((t: Topic) => t.class_level === classLevel) || [];
-        return { ...ss, topics: filteredTopics };
-      }).filter((ss: any) => ss.topics.length > 0) || [];
-      return { ...strand, sub_strands: filteredSubStrands };
-    }).filter((strand: any) => strand.sub_strands.length > 0) || [];
+  const filteredStrands = useMemo(
+    () =>
+      curriculumTree?.strands
+        ?.map((strand) => {
+          const filteredSubStrands =
+            strand.sub_strands
+              ?.map((ss) => {
+                const filteredTopics = ss.topics?.filter((t) => t.class_level === classLevel) || [];
+                return { ...ss, topics: filteredTopics };
+              })
+              .filter((ss) => ss.topics.length > 0) || [];
+          return { ...strand, sub_strands: filteredSubStrands };
+        })
+        .filter((strand) => strand.sub_strands.length > 0) || [],
+    [curriculumTree, classLevel]
+  );
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-950">Curriculum Explorer</h1>
-          <p className="text-gray-500 mt-1">Manage topics and link questions</p>
+          <h1 className="text-2xl font-bold text-navy-900">Curriculum Explorer</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Browse NaCCA strands and organize topic questions ({classLevel})
+          </p>
         </div>
-        <div className="w-64">
+        <div className="w-full sm:w-64">
           <Select
-            options={subjects.map(s => ({ value: s.id, label: s.name }))}
+            options={subjects.map((s) => ({ value: s.id, label: s.name }))}
             value={selectedSubjectId}
             onChange={(e) => handleSubjectChange(e.target.value)}
           />
@@ -128,59 +180,89 @@ export default function CurriculumPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Tree Explorer */}
-        <Card className="lg:col-span-1 h-[calc(100vh-220px)] overflow-hidden flex flex-col">
-          <div className="p-4 border-b bg-gray-50/50">
-            <h2 className="font-semibold text-zinc-900">Curriculum Tree</h2>
+        <Card className="lg:col-span-1 lg:h-[calc(100vh-210px)] max-h-[540px] lg:max-h-none overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-slate-100 bg-slate-50/70">
+            <h2 className="font-semibold text-navy-900">Curriculum Tree</h2>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-3.5 custom-scrollbar">
             {loading ? (
-              <div className="flex justify-center items-center h-full">
-                <Loader2 className="w-6 h-6 animate-spin text-zinc-900" />
+              <div className="flex justify-center items-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
               </div>
             ) : filteredStrands.length === 0 ? (
-              <div className="text-center text-gray-500 mt-10">No strands found for this class.</div>
+              <div className="text-center text-slate-500 py-10 text-sm">
+                No strands found for {classLevel}.
+              </div>
             ) : (
               <div className="space-y-1">
-                {filteredStrands.map((strand: any) => (
+                {filteredStrands.map((strand) => (
                   <div key={strand.id} className="text-sm">
-                    {/* Strand Node */}
-                    <div 
-                      className="flex items-center gap-2 py-1.5 px-2 hover:bg-gray-100 rounded cursor-pointer text-zinc-900 font-medium"
+                    <button
+                      type="button"
+                      className="w-full flex items-center gap-2 py-2 px-2.5 hover:bg-slate-100 rounded-lg text-left text-navy-900 font-semibold transition-colors"
                       onClick={() => toggleNode(strand.id)}
                     >
-                      {expandedNodes.has(strand.id) ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
-                      {expandedNodes.has(strand.id) ? <FolderOpen className="w-4 h-4 text-zinc-900" /> : <Folder className="w-4 h-4 text-zinc-900" />}
+                      {expandedNodes.has(strand.id) ? (
+                        <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                      )}
+                      {expandedNodes.has(strand.id) ? (
+                        <FolderOpen className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                      ) : (
+                        <Folder className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                      )}
                       <span className="truncate">{strand.name}</span>
-                    </div>
+                    </button>
 
-                    {/* Sub-strands */}
                     {expandedNodes.has(strand.id) && (
-                      <div className="ml-6 border-l-2 border-gray-100 pl-2 mt-1 space-y-1">
-                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                        {strand.sub_strands.map((ss: any) => (
+                      <div className="ml-5 border-l-2 border-slate-100 pl-2 mt-1 space-y-1">
+                        {strand.sub_strands.map((ss) => (
                           <div key={ss.id}>
-                            <div 
-                              className="flex items-center gap-2 py-1.5 px-2 hover:bg-gray-100 rounded cursor-pointer text-gray-700"
+                            <button
+                              type="button"
+                              className="w-full flex items-center gap-2 py-1.5 px-2 hover:bg-slate-100 rounded-lg text-left text-slate-700 font-medium transition-colors"
                               onClick={() => toggleNode(ss.id)}
                             >
-                              {expandedNodes.has(ss.id) ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
-                              {expandedNodes.has(ss.id) ? <FolderOpen className="w-4 h-4 text-blue-500" /> : <Folder className="w-4 h-4 text-blue-500" />}
+                              {expandedNodes.has(ss.id) ? (
+                                <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                              )}
+                              {expandedNodes.has(ss.id) ? (
+                                <FolderOpen className="w-4 h-4 text-navy-600 flex-shrink-0" />
+                              ) : (
+                                <Folder className="w-4 h-4 text-navy-600 flex-shrink-0" />
+                              )}
                               <span className="truncate">{ss.name}</span>
-                            </div>
+                            </button>
 
-                            {/* Topics */}
                             {expandedNodes.has(ss.id) && (
-                              <div className="ml-5 border-l-2 border-gray-100 pl-2 mt-1 space-y-0.5">
-                                {ss.topics.map((t: Topic) => (
-                                  <div 
-                                    key={t.id}
-                                    className={`flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer text-gray-600 ${selectedTopic?.id === t.id ? 'bg-teal-50 text-teal-700 font-medium' : 'hover:bg-gray-100'}`}
-                                    onClick={() => handleSelectTopic(t)}
-                                  >
-                                    <FileText className={`w-3.5 h-3.5 ${selectedTopic?.id === t.id ? 'text-zinc-900' : 'text-gray-400'}`} />
-                                    <span className="truncate">{t.code} — {t.name}</span>
-                                  </div>
-                                ))}
+                              <div className="ml-5 border-l-2 border-slate-100 pl-2 mt-1 space-y-0.5">
+                                {ss.topics.map((t) => {
+                                  const isSelected = selectedTopic?.id === t.id;
+                                  return (
+                                    <button
+                                      key={t.id}
+                                      type="button"
+                                      className={`w-full flex items-center gap-2 py-1.5 px-2.5 rounded-lg text-left transition-colors ${
+                                        isSelected
+                                          ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                                          : 'text-slate-600 hover:bg-slate-100'
+                                      }`}
+                                      onClick={() => handleSelectTopic(t)}
+                                    >
+                                      <FileText
+                                        className={`w-3.5 h-3.5 flex-shrink-0 ${
+                                          isSelected ? 'text-indigo-600' : 'text-slate-400'
+                                        }`}
+                                      />
+                                      <span className="truncate">
+                                        {t.code} — {t.name}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -195,56 +277,62 @@ export default function CurriculumPage() {
         </Card>
 
         {/* Right Column: Topic Details & Questions */}
-        <Card className="lg:col-span-2 h-[calc(100vh-220px)] flex flex-col">
+        <Card className="lg:col-span-2 lg:h-[calc(100vh-210px)] flex flex-col overflow-hidden">
           {!selectedTopic ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-500 p-8 text-center">
-              <FolderOpen className="w-12 h-12 text-gray-300 mb-4" />
-              <h3 className="text-lg font-medium text-zinc-900">No Topic Selected</h3>
-              <p className="max-w-sm mt-2">Select a topic from the curriculum tree on the left to view its details and manage linked questions.</p>
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-500 p-10 text-center">
+              <FolderOpen className="w-12 h-12 text-slate-300 mb-4" />
+              <h3 className="text-lg font-semibold text-navy-900">No Topic Selected</h3>
+              <p className="max-w-sm mt-2 text-sm">
+                Select a topic from the curriculum tree to inspect its questions or move your custom questions into it.
+              </p>
             </div>
           ) : (
             <>
-              <div className="p-6 border-b flex items-start justify-between bg-white">
+              <div className="p-6 border-b border-slate-100 flex flex-wrap items-start justify-between gap-4 bg-white">
                 <div>
-                  <div className="text-xs font-semibold text-zinc-900 uppercase tracking-wider mb-1">{selectedTopic.code}</div>
-                  <h2 className="text-xl font-bold text-zinc-950">{selectedTopic.name}</h2>
-                  <p className="text-sm text-gray-500 mt-1">{topicQuestions.length} Questions Linked</p>
+                  <div className="text-xs font-mono font-semibold text-indigo-600 uppercase tracking-wider mb-1">
+                    {selectedTopic.code}
+                  </div>
+                  <h2 className="text-xl font-bold text-navy-900">{selectedTopic.name}</h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {topicQuestions.length} Question{topicQuestions.length !== 1 ? 's' : ''} Available
+                  </p>
                 </div>
                 <Button onClick={() => setShowLinkModal(true)}>
-                  <Link className="w-4 h-4 mr-2" />
-                  Link Questions
+                  <ArrowRightLeft className="w-4 h-4 mr-2" />
+                  Move Questions Here
                 </Button>
               </div>
-              
-              <div className="flex-1 overflow-y-auto bg-gray-50/50 p-6">
+
+              <div className="flex-1 overflow-y-auto bg-slate-50/50 p-6 custom-scrollbar">
                 {questionsLoading ? (
                   <div className="flex justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-zinc-900" />
+                    <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
                   </div>
                 ) : topicQuestions.length === 0 ? (
-                  <div className="text-center py-12 bg-white rounded-lg border border-dashed border-gray-300">
-                    <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                    <h3 className="text-sm font-medium text-zinc-900">No Questions Linked</h3>
-                    <p className="text-sm text-gray-500 mt-1">This topic is empty.</p>
+                  <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
+                    <FileText className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <h3 className="text-sm font-semibold text-navy-900">No Questions Linked</h3>
+                    <p className="text-sm text-slate-500 mt-1">This topic has no questions yet.</p>
                     <Button variant="outline" className="mt-4" onClick={() => setShowLinkModal(true)}>
-                      Link Existing Questions
+                      Move Existing Questions
                     </Button>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {topicQuestions.map((q, i) => (
-                      <div key={q.id} className="bg-white p-4 rounded-lg border shadow-sm flex gap-4">
-                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-teal-50 text-zinc-900 flex items-center justify-center text-xs font-bold">
+                      <div key={q.id} className="bg-white p-4 rounded-xl border border-slate-200 flex gap-3.5">
+                        <div className="flex-shrink-0 w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center text-xs font-bold tabular-nums">
                           {i + 1}
                         </div>
-                        <div className="flex-1">
-                          <p className="text-sm text-zinc-950 font-medium">{q.stem}</p>
-                          <div className="flex gap-2 mt-2">
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium uppercase">
-                              {q.question_type.replace('_', ' ')}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-navy-900 font-medium">{q.stem}</p>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium uppercase">
+                              {q.question_type.replace(/_/g, ' ')}
                             </span>
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium uppercase">
-                              {q.difficulty}
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium uppercase">
+                              {q.difficulty.replace(/_/g, ' ')}
                             </span>
                           </div>
                         </div>
@@ -265,7 +353,9 @@ export default function CurriculumPage() {
           topicId={selectedTopic.id}
           topicName={selectedTopic.name}
           allTopicIdsInSubject={allTopicIdsInSubject}
-          onLink={handleLinkQuestions}
+          currentTeacherId={teacher?.id}
+          isAdmin={teacher?.is_admin}
+          onLink={handleMoveQuestions}
         />
       )}
     </div>

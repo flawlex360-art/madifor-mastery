@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
-interface LearnerRow {
+export interface LearnerRow {
   learner_id: string;
   display_name: string;
   learner_code?: string;
@@ -20,18 +20,26 @@ interface LearnerTableProps {
   onLearnerClick?: (learnerId: string) => void;
 }
 
-type SortKey = 'display_name' | 'topics_attempted' | 'overall_avg_pct' | 'topics_retained' | 'last_active' | 'voluntary_practice_sessions';
+type SortKey =
+  | 'display_name'
+  | 'topics_attempted'
+  | 'overall_avg_pct'
+  | 'topics_retained'
+  | 'last_active'
+  | 'voluntary_practice_sessions';
 type SortDir = 'asc' | 'desc';
 
-function getStatus(avgPct: number): { label: string; bg: string; text: string } {
-  if (avgPct >= 80) return { label: 'On Track', bg: 'bg-green-100', text: 'text-green-700' };
-  if (avgPct >= 40) return { label: 'Progressing', bg: 'bg-amber-100', text: 'text-amber-700' };
-  return { label: 'At Risk', bg: 'bg-red-100', text: 'text-red-700' };
+function getStatus(avgPct: number, attempted: number): { label: string; bg: string; text: string } {
+  if (attempted === 0) return { label: 'Not Started', bg: 'bg-slate-100', text: 'text-slate-600' };
+  if (avgPct >= 80) return { label: 'On Track', bg: 'bg-emerald-50', text: 'text-emerald-700' };
+  if (avgPct >= 40) return { label: 'Progressing', bg: 'bg-amber-50', text: 'text-amber-700' };
+  return { label: 'At Risk', bg: 'bg-rose-50', text: 'text-rose-700' };
 }
 
 function formatLastActive(dateStr: string | null | undefined): string {
   if (!dateStr) return 'Never';
   const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return '—';
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
@@ -47,32 +55,44 @@ function formatLastActive(dateStr: string | null | undefined): string {
 }
 
 function getLastActiveColor(dateStr: string | null | undefined): string {
-  if (!dateStr) return 'text-gray-400';
+  if (!dateStr) return 'text-slate-400';
   const date = new Date(dateStr);
-  const now = new Date();
-  const diffDays = Math.floor((now.getTime() - date.getTime()) / 86400000);
-  if (diffDays <= 1) return 'text-green-600';
+  if (Number.isNaN(date.getTime())) return 'text-slate-400';
+  const diffDays = Math.floor((Date.now() - date.getTime()) / 86400000);
+  if (diffDays <= 1) return 'text-emerald-600';
   if (diffDays <= 3) return 'text-amber-600';
-  return 'text-red-500';
+  return 'text-rose-600';
 }
 
 function SortableHeader({
-  label, sortKey, currentSort, currentDir, onSort,
+  label,
+  sortKey,
+  currentSort,
+  currentDir,
+  align = 'center',
+  onSort,
 }: {
-  label: string; sortKey: SortKey; currentSort: SortKey; currentDir: SortDir; onSort: (key: SortKey) => void;
+  label: string;
+  sortKey: SortKey;
+  currentSort: SortKey;
+  currentDir: SortDir;
+  align?: 'left' | 'center';
+  onSort: (key: SortKey) => void;
 }) {
   const active = currentSort === sortKey;
   return (
     <th
-      className="text-center px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100 transition-colors"
+      className={`${
+        align === 'left' ? 'text-left' : 'text-center'
+      } px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100/80 transition-colors`}
       onClick={() => onSort(sortKey)}
     >
-      <div className="flex items-center justify-center gap-1">
+      <div className={`flex items-center gap-1 ${align === 'left' ? 'justify-start' : 'justify-center'}`}>
         {label}
         {active ? (
-          currentDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+          currentDir === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
         ) : (
-          <ArrowUpDown className="w-3 h-3 opacity-30" />
+          <ArrowUpDown className="w-3.5 h-3.5 opacity-35" />
         )}
       </div>
     </th>
@@ -95,14 +115,13 @@ export default function LearnerTable({ learners, onLearnerClick }: LearnerTableP
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
-    let list = learners;
-    if (q) {
-      list = list.filter(
-        (l) =>
-          l.display_name.toLowerCase().includes(q) ||
-          (l.learner_code || '').toLowerCase().includes(q)
-      );
-    }
+    const list = q
+      ? learners.filter(
+          (l) =>
+            l.display_name.toLowerCase().includes(q) ||
+            (l.learner_code || '').toLowerCase().includes(q)
+        )
+      : learners;
 
     return [...list].sort((a, b) => {
       let aVal: string | number = '';
@@ -144,16 +163,16 @@ export default function LearnerTable({ learners, onLearnerClick }: LearnerTableP
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-zinc-900">Learners</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h2 className="font-semibold text-navy-900">Learners</h2>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search learners..."
+              placeholder="Search name or code..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-3 py-1.5 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-400/40 focus:border-teal-400 w-56"
+              className="pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white text-navy-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 w-full sm:w-56"
             />
           </div>
         </div>
@@ -162,85 +181,88 @@ export default function LearnerTable({ learners, onLearnerClick }: LearnerTableP
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-gray-50">
-                <SortableHeader label="Name" sortKey="display_name" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-                <th className="text-left px-4 py-3 font-medium text-gray-600">ID</th>
+              <tr className="border-b border-slate-200 bg-slate-50/80">
+                <SortableHeader label="Name" sortKey="display_name" currentSort={sortKey} currentDir={sortDir} align="left" onSort={handleSort} />
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">ID</th>
                 <SortableHeader label="Topics" sortKey="topics_attempted" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
                 <SortableHeader label="Mastery" sortKey="overall_avg_pct" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
                 <SortableHeader label="Retained" sortKey="topics_retained" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-                <th className="text-center px-4 py-3 font-medium text-gray-600">Status</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Status</th>
                 <SortableHeader label="Last Active" sortKey="last_active" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
                 <SortableHeader label="Practice" sortKey="voluntary_practice_sessions" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
-                    {search ? 'No learners match your search.' : 'No learners yet.'}
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                    {search ? 'No learners match your search.' : 'No learners enrolled yet.'}
                   </td>
                 </tr>
               ) : (
                 filtered.map((learner) => {
+                  const attempted = learner.topics_attempted || 0;
                   const avgPct = Math.round(learner.overall_avg_pct || 0);
-                  const status = getStatus(avgPct);
+                  const status = getStatus(avgPct, attempted);
 
                   return (
                     <tr
                       key={learner.learner_id}
-                      className={`border-b hover:bg-gray-50 ${onLearnerClick ? 'cursor-pointer' : ''}`}
+                      className={`transition-colors hover:bg-slate-50/80 ${onLearnerClick ? 'cursor-pointer' : ''}`}
                       onClick={() => onLearnerClick?.(learner.learner_id)}
                     >
-                      <td className="px-4 py-3 font-medium text-zinc-900">
+                      <td className="px-4 py-3 font-medium text-navy-900 whitespace-nowrap">
                         {learner.display_name}
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
-                        {learner.learner_code || '\u2014'}
+                      <td className="px-4 py-3 text-slate-500 font-mono text-xs whitespace-nowrap">
+                        {learner.learner_code || '—'}
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        {learner.topics_attempted || 0}
+                      <td className="px-4 py-3 text-center tabular-nums text-slate-700">
+                        {attempted}
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <span
-                          className={`font-semibold ${
-                            avgPct >= 80
-                              ? 'text-green-600'
-                              : avgPct >= 40
-                                ? 'text-amber-600'
-                                : 'text-red-600'
-                          }`}
-                        >
-                          {avgPct}%
-                        </span>
+                      <td className="px-4 py-3 text-center tabular-nums">
+                        {attempted > 0 ? (
+                          <span
+                            className={`font-semibold ${
+                              avgPct >= 80
+                                ? 'text-emerald-600'
+                                : avgPct >= 40
+                                  ? 'text-amber-600'
+                                  : 'text-rose-600'
+                            }`}
+                          >
+                            {avgPct}%
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 text-center tabular-nums">
                         {(learner.topics_retained || 0) > 0 ? (
-                          <span className="font-medium text-green-600">
+                          <span className="font-semibold text-emerald-600">
                             {learner.topics_retained}
                           </span>
                         ) : (
-                          <span className="text-gray-400">0</span>
+                          <span className="text-slate-400">0</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <span
-                          className={`px-2 py-1 text-xs font-medium rounded-full ${status.bg} ${status.text}`}
-                        >
+                      <td className="px-4 py-3 text-center whitespace-nowrap">
+                        <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${status.bg} ${status.text}`}>
                           {status.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 text-center whitespace-nowrap">
                         <span className={`text-xs font-medium ${getLastActiveColor(learner.last_active)}`}>
                           {formatLastActive(learner.last_active)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 text-center whitespace-nowrap">
                         {(learner.voluntary_practice_sessions || 0) > 0 ? (
-                          <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
+                          <span className="px-2.5 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 rounded-full">
                             {learner.voluntary_practice_sessions} sessions
                           </span>
                         ) : (
-                          <span className="text-gray-400">\u2014</span>
+                          <span className="text-slate-400">—</span>
                         )}
                       </td>
                     </tr>
@@ -251,7 +273,7 @@ export default function LearnerTable({ learners, onLearnerClick }: LearnerTableP
           </table>
         </div>
         {search && filtered.length > 0 && (
-          <div className="px-4 py-2 text-xs text-gray-400 border-t">
+          <div className="px-4 py-2.5 text-xs text-slate-500 border-t border-slate-100 bg-slate-50/50">
             Showing {filtered.length} of {learners.length} learners
           </div>
         )}

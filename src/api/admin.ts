@@ -9,7 +9,7 @@ export interface AdminTeacherRecord {
   full_name: string;
   is_admin: boolean;
   status: 'active' | 'suspended';
-  school_name?: string;
+  school_name?: string | null;
   created_at: string;
   classes?: { id: string }[];
 }
@@ -25,26 +25,20 @@ export async function getAllTeachers(): Promise<AdminTeacherRecord[]> {
 }
 
 export async function getPlatformStats() {
-  // To get the count of learners, we can query the learners table
-  const { count: learnersCount, error: lError } = await db
-    .from('learners')
-    .select('*', { count: 'exact', head: true });
-  if (lError) throw new Error(lError.message);
+  const [learnersRes, classesRes, teachersRes] = await Promise.all([
+    db.from('learners').select('*', { count: 'exact', head: true }),
+    db.from('classes').select('*', { count: 'exact', head: true }),
+    db.from('teachers').select('*', { count: 'exact', head: true }),
+  ]);
 
-  const { count: classesCount, error: cError } = await db
-    .from('classes')
-    .select('*', { count: 'exact', head: true });
-  if (cError) throw new Error(cError.message);
-
-  const { count: teachersCount, error: tError } = await db
-    .from('teachers')
-    .select('*', { count: 'exact', head: true });
-  if (tError) throw new Error(tError.message);
+  if (learnersRes.error) throw new Error(learnersRes.error.message);
+  if (classesRes.error) throw new Error(classesRes.error.message);
+  if (teachersRes.error) throw new Error(teachersRes.error.message);
 
   return {
-    totalLearners: learnersCount || 0,
-    totalClasses: classesCount || 0,
-    totalTeachers: teachersCount || 0,
+    totalLearners: learnersRes.count || 0,
+    totalClasses: classesRes.count || 0,
+    totalTeachers: teachersRes.count || 0,
   };
 }
 

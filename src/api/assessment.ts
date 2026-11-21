@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { ASSESSMENT_CONFIG } from '@/config/assessment';
+import type { Question } from '@/types/curriculum';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -49,45 +51,45 @@ export async function getTopicMastery(learnerId: string) {
 }
 
 export async function getTopicMasteryForTopic(learnerId: string, topicId: string) {
-  const { data } = await db
+  const { data, error } = await db
     .from('topic_mastery')
     .select('*')
     .eq('learner_id', learnerId)
     .eq('topic_id', topicId)
-    .single();
+    .maybeSingle();
+  if (error) throw error;
   return data;
 }
 
-export async function getQuestionsForAssessment(topicId: string, limit: number) {
+export async function getQuestionsForAssessment(topicId: string, limit: number): Promise<Question[]> {
   const { data, error } = await db
     .from('questions')
     .select('*')
     .eq('topic_id', topicId)
-    .limit(limit * 2);
+    .limit(Math.max(limit * 3, 30));
   if (error) throw error;
-  return shuffleArray(data || []).slice(0, limit);
+  return shuffleArray((data || []) as Question[]).slice(0, limit);
 }
 
-export async function getInitialQuestionForAssessment(topicId: string) {
-  // Fetch a small batch quickly to get the first question instantly
+export async function getInitialQuestionForAssessment(topicId: string): Promise<Question[]> {
   const { data, error } = await db
     .from('questions')
     .select('*')
     .eq('topic_id', topicId)
-    .limit(5);
+    .limit(15);
   if (error) throw error;
-  return shuffleArray(data || []).slice(0, 1);
+  return shuffleArray((data || []) as Question[]).slice(0, 1);
 }
 
-export async function getRemainingQuestionsForAssessment(topicId: string, limit: number, excludeId: string) {
+export async function getRemainingQuestionsForAssessment(topicId: string, limit: number, excludeId: string): Promise<Question[]> {
   const { data, error } = await db
     .from('questions')
     .select('*')
     .eq('topic_id', topicId)
     .neq('id', excludeId)
-    .limit(limit * 2);
+    .limit(Math.max(limit * 3, 30));
   if (error) throw error;
-  return shuffleArray(data || []).slice(0, limit);
+  return shuffleArray((data || []) as Question[]).slice(0, limit);
 }
 
 export async function getReviewQuestions(learnerId: string, limit: number) {
@@ -128,7 +130,7 @@ export async function getLearnerSummary(classId: string) {
 export async function getLearnerTopicMastery(learnerId: string) {
   const { data, error } = await db
     .from('topic_mastery')
-    .select('*, topics(name, code)')
+    .select('*, topics(name, code, class_level)')
     .eq('learner_id', learnerId)
     .order('last_updated', { ascending: false });
   if (error) throw error;
@@ -136,11 +138,11 @@ export async function getLearnerTopicMastery(learnerId: string) {
     ...row,
     topic_name: (row.topics as Record<string, unknown>)?.name as string,
     topic_code: (row.topics as Record<string, unknown>)?.code as string,
+    class_level: (row.topics as Record<string, unknown>)?.class_level as string,
   }));
 }
 
 export async function getClassReviewQueue(classId: string) {
-  // Get learners in this class
   const { data: learners, error: lErr } = await db
     .from('learners')
     .select('id, display_name')
@@ -150,7 +152,6 @@ export async function getClassReviewQueue(classId: string) {
 
   const learnerIds = learners.map((l: Record<string, unknown>) => l.id);
 
-  // Get pending review items
   const { data: reviews, error: rErr } = await db
     .from('review_queue')
     .select('learner_id, question_id, topic_id, stage, due_at, topics(name, code)')
@@ -159,19 +160,20 @@ export async function getClassReviewQueue(classId: string) {
     .order('due_at', { ascending: true });
   if (rErr) throw new Error(rErr.message);
 
-  // Group by learner
   const learnerMap = new Map(learners.map((l: Record<string, unknown>) => [l.id, l.display_name]));
+  const overdueCutoff = Date.now() - ASSESSMENT_CONFIG.overdueReviewDays * 24 * 60 * 60 * 1000;
   const result: Record<string, unknown>[] = [];
 
   for (const review of reviews || []) {
     const learnerName = learnerMap.get(review.learner_id) || 'Unknown';
     const topicInfo = review.topics as Record<string, unknown> | null;
+    const dueMs = review.due_at ? new Date(review.due_at).getTime() : NaN;
     result.push({
       ...review,
       display_name: learnerName,
-      topic_name: topicInfo?.name as string || 'Unknown',
-      topic_code: topicInfo?.code as string || '',
-      is_overdue: new Date(review.due_at) < new Date(),
+      topic_name: (topicInfo?.name as string) || 'Unknown',
+      topic_code: (topicInfo?.code as string) || '',
+      is_overdue: Number.isFinite(dueMs) && dueMs < overdueCutoff,
     });
   }
 
@@ -183,7 +185,10 @@ export async function getQuestionAnalytics(topicId?: string) {
   if (topicId) {
     query = query.eq('topic_id', topicId);
   }
-  query = query.order('success_rate_pct', { ascending: true }).limit(50);
+  query = query
+    .gt('total_attempts', 0)
+    .order('success_rate_pct', { ascending: true, nullsFirst: false })
+    .limit(100);
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
@@ -195,47 +200,51 @@ export async function getPsychometricAnalytics(topicId?: string) {
     difficulty,
     discrimination,
     total_attempts,
-    questions!inner(id, content, question_type, topic_id)
+    questions!inner(id, stem, question_type, topic_id)
   `);
-  
+
   if (topicId) {
     query = query.eq('questions.topic_id', topicId);
   }
-  
-  const { data, error } = await query;
+
+  const { data, error } = await query.order('total_attempts', { ascending: false }).limit(200);
   if (error) throw error;
-  
-  // Flatten response
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data || []).map((row: any) => ({
     question_id: row.question_id,
-    difficulty_b: row.difficulty,
-    discrimination_a: row.discrimination,
-    total_attempts: row.total_attempts,
-    stem: row.questions.content.stem || 'Unknown Question',
-    question_type: row.questions.question_type,
-    topic_id: row.questions.topic_id,
+    difficulty_b: Number(row.difficulty ?? 0),
+    discrimination_a: Number(row.discrimination ?? 1),
+    total_attempts: Number(row.total_attempts ?? 0),
+    stem: row.questions?.stem || 'Unknown Question',
+    question_type: row.questions?.question_type || 'multiple_choice',
+    topic_id: row.questions?.topic_id || '',
   }));
 }
 
-export async function getAdaptiveQuestion(learnerId: string, topicId: string) {
+export async function getAdaptiveQuestion(
+  learnerId: string,
+  topicId: string,
+  excludeIds: string[] = []
+): Promise<Question | null> {
   const { data, error } = await db.rpc('get_adaptive_question', {
     p_learner_id: learnerId,
-    p_topic_id: topicId
+    p_topic_id: topicId,
+    p_exclude_ids: excludeIds,
   });
-  
+
   if (error) throw error;
   if (!data || data.length === 0) return null;
-  return data[0];
+  return data[0] as Question;
 }
 
 export async function getLearnerPsychometricProfile(learnerId: string) {
-  // Get all ability scores for this learner
   const { data, error } = await db
     .from('learner_abilities')
     .select('subject_id, theta, total_answered')
-    .eq('learner_id', learnerId);
-    
+    .eq('learner_id', learnerId)
+    .order('total_answered', { ascending: false });
+
   if (error) throw error;
   return data || [];
 }
@@ -255,7 +264,6 @@ export async function getMasteryHistory(learnerId: string, topicId?: string) {
 }
 
 export async function getMisconceptionPatterns(classId: string) {
-  // Get learners in this class
   const { data: learners, error: lErr } = await db
     .from('learners')
     .select('id, display_name')
@@ -265,18 +273,20 @@ export async function getMisconceptionPatterns(classId: string) {
 
   const learnerIds = learners.map((l: Record<string, unknown>) => l.id);
 
-  // Get questions missed 3+ times by the same learner
   const { data: attempts, error: aErr } = await db
     .from('attempts')
-    .select('learner_id, question_id, is_correct, questions(stem, topic_id, topics(name, code))')
+    .select('learner_id, question_id, attempt_type, questions(stem, topic_id, topics(name, code))')
     .in('learner_id', learnerIds)
     .eq('is_correct', false)
+    .neq('attempt_type', 'self_practice')
     .order('created_at', { ascending: false })
-    .limit(500);
+    .limit(1000);
   if (aErr) throw new Error(aErr.message);
 
-  // Group by (learner, question) and count misses
-  const missMap = new Map<string, { learner_id: string; question_id: string; stem: string; topic_name: string; topic_code: string; count: number }>();
+  const missMap = new Map<
+    string,
+    { learner_id: string; question_id: string; topic_id: string; stem: string; topic_name: string; topic_code: string; count: number }
+  >();
   for (const attempt of attempts || []) {
     const key = `${attempt.learner_id}:${attempt.question_id}`;
     const existing = missMap.get(key);
@@ -288,6 +298,7 @@ export async function getMisconceptionPatterns(classId: string) {
       missMap.set(key, {
         learner_id: attempt.learner_id,
         question_id: attempt.question_id,
+        topic_id: (qInfo?.topic_id as string) || '',
         stem: (qInfo?.stem as string) || 'Unknown',
         topic_name: (topicInfo?.name as string) || 'Unknown',
         topic_code: (topicInfo?.code as string) || '',
@@ -296,23 +307,22 @@ export async function getMisconceptionPatterns(classId: string) {
     }
   }
 
-  // Filter to 3+ misses and add learner names
   const learnerNameMap = new Map(learners.map((l: Record<string, unknown>) => [l.id, l.display_name]));
-  const patterns = Array.from(missMap.values())
+  return Array.from(missMap.values())
     .filter((m) => m.count >= 3)
     .map((m) => ({
       ...m,
       learner_name: learnerNameMap.get(m.learner_id) || 'Unknown',
     }))
     .sort((a, b) => b.count - a.count);
-
-  return patterns;
 }
 
-export async function getTotalTopicsCount(): Promise<number> {
-  const { count, error } = await db
-    .from('topics')
-    .select('*', { count: 'exact', head: true });
+export async function getTotalTopicsCount(classLevel?: string): Promise<number> {
+  let query = db.from('topics').select('*', { count: 'exact', head: true });
+  if (classLevel) {
+    query = query.eq('class_level', classLevel);
+  }
+  const { count, error } = await query;
   if (error) throw error;
   return count || 0;
 }

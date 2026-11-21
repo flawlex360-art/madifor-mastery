@@ -5,16 +5,10 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import './index.css';
 
-// Register service worker for PWA
-const updateSW = registerSW({
-  onNeedRefresh() {
-    // Could show a toast asking user to refresh
-    if (confirm('New version available. Reload to update?')) {
-      updateSW(true);
-    }
-  },
+// Register service worker without interrupting mid-assessment learners with blocking confirm() dialogs
+registerSW({
   onOfflineReady() {
-    console.log('Madifor Mastery is ready for offline use');
+    // Offline shell ready
   },
 });
 

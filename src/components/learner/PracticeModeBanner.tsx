@@ -8,18 +8,20 @@ interface PracticeModeBannerProps {
 
 export default function PracticeModeBanner({ practiceLevel, onExit }: PracticeModeBannerProps) {
   return (
-    <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex items-center justify-between">
+    <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-          <BookOpen className="w-5 h-5 text-purple-600" />
+        <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
+          <BookOpen className="w-5 h-5 text-indigo-700" />
         </div>
         <div>
-          <p className="font-semibold text-purple-800">Practicing {practiceLevel} Content</p>
-          <p className="text-sm text-purple-600">This won't count toward your mastery — just for practice!</p>
+          <p className="font-bold text-indigo-950">Practicing {practiceLevel} Content</p>
+          <p className="text-xs sm:text-sm text-indigo-700">
+            Adaptive voluntary practice — does not affect your official class mastery scores.
+          </p>
         </div>
       </div>
-      <Button variant="outline" size="sm" onClick={onExit}>
-        <ArrowLeft className="w-4 h-4 mr-1" />
+      <Button variant="outline" size="sm" onClick={onExit} className="self-start sm:self-auto">
+        <ArrowLeft className="w-4 h-4 mr-1.5" />
         Back to My Class
       </Button>
     </div>

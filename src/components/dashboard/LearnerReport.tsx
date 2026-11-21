@@ -18,7 +18,9 @@ interface ReportData {
 
 const styles = StyleSheet.create({
   page: {
-    padding: 40,
+    paddingTop: 40,
+    paddingHorizontal: 40,
+    paddingBottom: 64,
     fontFamily: 'Helvetica',
   },
   header: {
@@ -33,7 +35,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 10,
-    color: '#6b7280',
+    color: '#64748b',
     marginTop: 4,
   },
   section: {
@@ -52,7 +54,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 10,
-    color: '#6b7280',
+    color: '#64748b',
   },
   value: {
     fontSize: 10,
@@ -60,21 +62,18 @@ const styles = StyleSheet.create({
     color: '#1B2A4A',
   },
   readinessBox: {
-    backgroundColor: '#f0fdf4',
-    border: '1px solid #86efac',
-    borderRadius: 4,
-    padding: 12,
+    borderRadius: 6,
+    padding: 14,
     alignItems: 'center',
     marginBottom: 16,
   },
   readinessScore: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#16a34a',
   },
   readinessLabel: {
     fontSize: 10,
-    color: '#6b7280',
+    color: '#475569',
     marginTop: 2,
   },
   table: {
@@ -82,25 +81,25 @@ const styles = StyleSheet.create({
   },
   tableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#f3f4f6',
-    paddingVertical: 4,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 5,
     paddingHorizontal: 8,
-    borderBottom: '1px solid #e5e7eb',
+    borderBottom: '1px solid #e2e8f0',
   },
   tableHeaderText: {
     fontSize: 9,
     fontWeight: 'bold',
-    color: '#374151',
+    color: '#334155',
   },
   tableRow: {
     flexDirection: 'row',
-    paddingVertical: 3,
+    paddingVertical: 4,
     paddingHorizontal: 8,
-    borderBottom: '1px solid #f3f4f6',
+    borderBottom: '1px solid #f1f5f9',
   },
   tableCell: {
     fontSize: 9,
-    color: '#1f2937',
+    color: '#1e293b',
   },
   colCode: { width: '20%' },
   colName: { width: '45%' },
@@ -108,13 +107,13 @@ const styles = StyleSheet.create({
   colStatus: { width: '20%', textAlign: 'center' },
   footer: {
     position: 'absolute',
-    bottom: 30,
+    bottom: 24,
     left: 40,
     right: 40,
     textAlign: 'center',
     fontSize: 8,
-    color: '#9ca3af',
-    borderTop: '1px solid #e5e7eb',
+    color: '#94a3b8',
+    borderTop: '1px solid #e2e8f0',
     paddingTop: 8,
   },
 });
@@ -123,8 +122,8 @@ function getStatusColor(status: string): string {
   switch (status) {
     case 'retained_mastered': return '#16a34a';
     case 'first_pass_mastered': return '#d97706';
-    case 'in_progress': return '#2563eb';
-    default: return '#9ca3af';
+    case 'in_progress': return '#4f46e5';
+    default: return '#94a3b8';
   }
 }
 
@@ -137,13 +136,35 @@ function getStatusLabel(status: string): string {
   }
 }
 
-function getReadinessLabel(score: number): string {
-  if (score >= 70) return 'Ready for BECE';
-  if (score >= 40) return 'Developing';
-  return 'Early Stage';
+function getReadinessTheme(score: number): { label: string; bg: string; border: string; text: string } {
+  if (score >= 70) {
+    return {
+      label: 'Ready for BECE',
+      bg: '#f0fdf4',
+      border: '1px solid #86efac',
+      text: '#16a34a',
+    };
+  }
+  if (score >= 40) {
+    return {
+      label: 'Developing',
+      bg: '#fffbeb',
+      border: '1px solid #fcd34d',
+      text: '#d97706',
+    };
+  }
+  return {
+    label: 'Early Stage',
+    bg: '#fef2f2',
+    border: '1px solid #fca5a5',
+    text: '#dc2626',
+  };
 }
 
 export default function LearnerReport({ data }: { data: ReportData }) {
+  const safeScore = Math.max(0, Math.min(100, Math.round(data.readiness_score || 0)));
+  const readinessTheme = getReadinessTheme(safeScore);
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -168,14 +189,23 @@ export default function LearnerReport({ data }: { data: ReportData }) {
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Class</Text>
-            <Text style={styles.value}>{data.class_name}</Text>
+            <Text style={styles.value}>{data.class_name || '—'}</Text>
           </View>
         </View>
 
         {/* BECE Readiness */}
-        <View style={styles.readinessBox}>
-          <Text style={styles.readinessScore}>{Math.round(data.readiness_score)}%</Text>
-          <Text style={styles.readinessLabel}>BECE Readiness — {getReadinessLabel(data.readiness_score)}</Text>
+        <View
+          style={[
+            styles.readinessBox,
+            { backgroundColor: readinessTheme.bg, border: readinessTheme.border },
+          ]}
+        >
+          <Text style={[styles.readinessScore, { color: readinessTheme.text }]}>
+            {safeScore}%
+          </Text>
+          <Text style={styles.readinessLabel}>
+            BECE Readiness — {readinessTheme.label}
+          </Text>
         </View>
 
         {/* Summary Stats */}
@@ -200,15 +230,15 @@ export default function LearnerReport({ data }: { data: ReportData }) {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Topic Mastery Detail</Text>
             <View style={styles.table}>
-              <View style={styles.tableHeader}>
+              <View style={styles.tableHeader} fixed>
                 <Text style={[styles.tableHeaderText, styles.colCode]}>Code</Text>
                 <Text style={[styles.tableHeaderText, styles.colName]}>Topic</Text>
                 <Text style={[styles.tableHeaderText, styles.colPct]}>Score</Text>
                 <Text style={[styles.tableHeaderText, styles.colStatus]}>Status</Text>
               </View>
               {data.topic_mastery.map((tm, i) => (
-                <View key={i} style={styles.tableRow}>
-                  <Text style={[styles.tableCell, styles.colCode]}>{tm.topic_code}</Text>
+                <View key={i} style={styles.tableRow} wrap={false}>
+                  <Text style={[styles.tableCell, styles.colCode]}>{tm.topic_code || '—'}</Text>
                   <Text style={[styles.tableCell, styles.colName]}>{tm.topic_name}</Text>
                   <Text style={[styles.tableCell, styles.colPct]}>{Math.round(tm.first_pass_pct)}%</Text>
                   <Text style={[styles.tableCell, styles.colStatus, { color: getStatusColor(tm.status) }]}>
@@ -221,8 +251,8 @@ export default function LearnerReport({ data }: { data: ReportData }) {
         )}
 
         {/* Footer */}
-        <Text style={styles.footer}>
-          Madifor Mastery — Topic-Based Assessment Platform for BECE Science — Generated by Flawlex IT Consult
+        <Text style={styles.footer} fixed>
+          Madifor Mastery — Topic-Based Assessment Platform for BECE Science
         </Text>
       </Page>
     </Document>

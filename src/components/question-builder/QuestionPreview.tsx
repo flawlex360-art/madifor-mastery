@@ -1,61 +1,76 @@
 import { Card, CardContent } from '@/components/ui/Card';
 import type { Question } from '@/types/curriculum';
+import {
+  parseOptionsList,
+  resolveCorrectOptionIndex,
+  formatCorrectAnswerDisplay,
+} from '@/lib/grading';
 
 interface QuestionPreviewProps {
   question: Question;
 }
 
 export default function QuestionPreview({ question }: QuestionPreviewProps) {
+  const options = parseOptionsList(question.options);
+  const correctIndex = resolveCorrectOptionIndex(question.correct_answer, options);
+
   return (
-    <Card>
-      <CardContent className="p-6 space-y-4">
-        {/* Metadata badges */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">
-            {question.question_type === 'multiple_choice' ? 'MCQ' : question.question_type === 'fill_in_blank' ? 'Fill-in' : question.question_type}
+    <Card className="border-slate-200 shadow-none">
+      <CardContent className="p-5 space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-medium">
+            {question.question_type === 'multiple_choice'
+              ? 'MCQ'
+              : question.question_type === 'fill_in_blank'
+                ? 'Fill-in'
+                : question.question_type}
           </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+          <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
             {question.difficulty}
           </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+          <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
             {question.blooms_level}
           </span>
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-            question.visibility === 'shared' ? 'bg-green-100 text-green-700'
-              : question.visibility === 'school' ? 'bg-blue-100 text-blue-700'
-              : 'bg-gray-100 text-gray-600'
-          }`}>
+          <span
+            className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
+              question.visibility === 'shared'
+                ? 'bg-emerald-50 text-emerald-700'
+                : question.visibility === 'school'
+                  ? 'bg-indigo-50 text-indigo-700'
+                  : 'bg-slate-100 text-slate-600'
+            }`}
+          >
             {question.visibility}
           </span>
         </div>
 
-        {/* Question stem */}
-        <p className="text-lg font-medium text-zinc-900 leading-relaxed">{question.stem}</p>
+        <p className="text-base font-semibold text-navy-900 leading-relaxed">{question.stem}</p>
 
-        {/* Answer options */}
-        {question.question_type === 'multiple_choice' && Array.isArray(question.options) && (
+        {question.question_type === 'multiple_choice' && options.length > 0 && (
           <div className="space-y-2">
-            {(question.options as string[]).map((opt, idx) => {
-              const isCorrect = Number(question.correct_answer) === idx;
+            {options.map((opt, idx) => {
+              const isCorrect = correctIndex === idx;
               return (
                 <div
                   key={idx}
-                  className={`flex items-center gap-3 p-3 rounded-lg border ${
+                  className={`flex items-center gap-3 p-3 rounded-xl border ${
                     isCorrect
-                      ? 'border-green-300 bg-green-50'
-                      : 'border-gray-200 bg-white'
+                      ? 'border-emerald-300 bg-emerald-50'
+                      : 'border-slate-200 bg-white'
                   }`}
                 >
-                  <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                    isCorrect ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'
-                  }`}>
+                  <span
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                      isCorrect ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
                     {String.fromCharCode(65 + idx)}
                   </span>
-                  <span className={`text-sm ${isCorrect ? 'font-medium text-green-800' : 'text-navy-700'}`}>
+                  <span className={`text-sm flex-1 ${isCorrect ? 'font-medium text-emerald-900' : 'text-navy-800'}`}>
                     {opt}
                   </span>
                   {isCorrect && (
-                    <span className="ml-auto text-xs font-medium text-green-600">Correct</span>
+                    <span className="ml-auto text-xs font-semibold text-emerald-700">Correct</span>
                   )}
                 </div>
               );
@@ -64,27 +79,25 @@ export default function QuestionPreview({ question }: QuestionPreviewProps) {
         )}
 
         {question.question_type === 'fill_in_blank' && (
-          <div className="p-3 rounded-lg border border-green-300 bg-green-50">
-            <p className="text-xs text-green-600 mb-1">Correct answer:</p>
-            <p className="text-sm font-medium text-green-800">
-              {String(question.correct_answer)}
+          <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50">
+            <p className="text-xs font-semibold text-emerald-700 mb-1">Accepted Answer(s):</p>
+            <p className="text-sm font-medium text-emerald-900">
+              {formatCorrectAnswerDisplay(question)}
             </p>
           </div>
         )}
 
-        {/* Explanation */}
-        <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
-          <p className="text-xs font-medium text-blue-600 mb-1">Explanation (shown on wrong answer):</p>
-          <p className="text-sm text-blue-800">{question.explanation}</p>
+        <div className="p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-100">
+          <p className="text-xs font-semibold text-indigo-700 mb-1">Explanation (shown on incorrect attempt):</p>
+          <p className="text-sm text-navy-800">{question.explanation}</p>
         </div>
 
-        {/* Hints */}
         {question.hints && question.hints.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-amber-600">Hints (progressive):</p>
+          <div className="space-y-1.5 bg-amber-50/70 border border-amber-100 p-3.5 rounded-xl">
+            <p className="text-xs font-semibold text-amber-700">Hints (progressive):</p>
             {question.hints.map((hint, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm text-amber-800">
-                <span className="text-xs text-amber-400 mt-0.5">{i + 1}.</span>
+              <div key={i} className="flex items-start gap-2 text-sm text-amber-900">
+                <span className="text-xs font-semibold text-amber-500 mt-0.5">{i + 1}.</span>
                 <span>{hint}</span>
               </div>
             ))}

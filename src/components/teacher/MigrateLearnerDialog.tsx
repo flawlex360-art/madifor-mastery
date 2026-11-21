@@ -3,7 +3,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import Button from '@/components/ui/Button';
 import Select from '@/components/ui/Select';
 import { ArrowRight, Loader2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Learner, Class } from '@/types/auth';
 
 interface MigrateLearnerDialogProps {
@@ -11,7 +10,7 @@ interface MigrateLearnerDialogProps {
   learner: Learner | null;
   currentClass: Class | null;
   allClasses: Class[];
-  onConfirm: (newClassId: string) => void;
+  onConfirm: (newClassId: string) => void | Promise<void>;
   onCancel: () => void;
   loading: boolean;
 }
@@ -37,7 +36,7 @@ export default function MigrateLearnerDialog({
 
   const availableClasses = allClasses.filter((c) => c.id !== currentClass.id);
   const classOptions = [
-    { value: '', label: 'Select a class...' },
+    { value: '', label: availableClasses.length > 0 ? 'Select a class...' : 'No other classes available' },
     ...availableClasses.map((c) => ({
       value: c.id,
       label: `${c.name} (${c.class_level})`,
@@ -45,75 +44,72 @@ export default function MigrateLearnerDialog({
   ];
 
   const handleMigrate = () => {
-    if (selectedClassId) {
+    if (selectedClassId && !loading) {
       onConfirm(selectedClassId);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
-      <AnimatePresence>
-        {open && (
-          <DialogContent>
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <DialogHeader>
-                <DialogTitle>Migrate Learner</DialogTitle>
-              </DialogHeader>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()} disableClose={loading}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Transfer Learner to Another Class</DialogTitle>
+        </DialogHeader>
 
-              <div className="py-6 space-y-6">
-                <div className="text-center space-y-1">
-                  <h3 className="font-semibold text-lg">{learner.display_name}</h3>
-                  <p className="text-sm text-zinc-500">Select a destination class to transfer this learner.</p>
-                </div>
+        <div className="py-4 space-y-5">
+          <div className="text-center space-y-1">
+            <h3 className="font-semibold text-lg text-navy-900">{learner.display_name}</h3>
+            <p className="text-sm text-slate-500">Select a destination class for this learner.</p>
+          </div>
 
-                <div className="flex items-center justify-between gap-4 p-4 bg-zinc-50 rounded-lg border border-zinc-200">
-                  <div className="flex-1 text-center truncate">
-                    <span className="text-xs text-zinc-500 uppercase tracking-wider block mb-1">Current</span>
-                    <span className="font-medium text-zinc-900">{currentClass.name}</span>
-                  </div>
-                  
-                  <div className="text-zinc-400">
-                    <ArrowRight size={24} />
-                  </div>
-                  
-                  <div className="flex-1">
-                    <span className="text-xs text-zinc-500 uppercase tracking-wider block mb-1 text-center">New Class</span>
-                    <Select
-                      options={classOptions}
-                      value={selectedClassId}
-                      onChange={(e) => setSelectedClassId(e.target.value)}
-                    />
-                  </div>
-                </div>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex-1 text-center truncate w-full">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                Current
+              </span>
+              <span className="font-semibold text-navy-900">
+                {currentClass.name} ({currentClass.class_level})
+              </span>
+            </div>
 
-                <div className="bg-blue-50 text-blue-800 p-3 rounded-md text-sm">
-                  All progress data, attempts, and mastery scores will be transferred with the learner.
-                </div>
-              </div>
+            <div className="text-slate-400 rotate-90 sm:rotate-0">
+              <ArrowRight size={20} />
+            </div>
 
-              <DialogFooter>
-                <Button variant="outline" onClick={onCancel} disabled={loading}>
-                  Cancel
-                </Button>
-                <Button 
-                  variant="primary" 
-                  onClick={handleMigrate} 
-                  disabled={!selectedClassId || loading}
-                  className="flex items-center"
-                >
-                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Migrate Learner
-                </Button>
-              </DialogFooter>
-            </motion.div>
-          </DialogContent>
-        )}
-      </AnimatePresence>
+            <div className="flex-1 w-full">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1 text-center">
+                New Class
+              </span>
+              <Select
+                options={classOptions}
+                value={selectedClassId}
+                disabled={availableClasses.length === 0}
+                onChange={(e) => setSelectedClassId(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="bg-indigo-50 text-indigo-800 border border-indigo-100 p-3.5 rounded-xl text-sm">
+            {availableClasses.length === 0
+              ? 'Create another class on your Class Management page before transferring learners.'
+              : 'All progress data, attempts, and mastery records stay intact when transferring classes.'}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleMigrate}
+            disabled={!selectedClassId || loading}
+          >
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Transfer Learner
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }

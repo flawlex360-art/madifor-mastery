@@ -1,86 +1,74 @@
-import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import { DEMO_TEACHER } from './demoData';
-import { AlertCircle } from 'lucide-react';
+import { User, Lock, Save } from 'lucide-react';
+import { toast } from '@/stores/toastStore';
 
 export default function DemoSettingsPage() {
-  const [demoError, setDemoError] = useState('');
-  
-  const handleAction = (e: React.FormEvent) => {
+  const handleReadOnlySubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setDemoError('Editing is disabled in the demo environment.');
+    toast.info('Demo mode is read-only. Create a real teacher account to update settings.');
   };
 
   return (
-    <div className="max-w-4xl space-y-6">
-      <div className="mb-4 bg-teal-50 border border-teal-200 rounded-lg p-4 text-teal-800 text-sm">
-        <strong className="font-bold">👋 Welcome to the Demo Environment!</strong> You can view settings, but modifying them is disabled.
-      </div>
-
+    <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-bold text-zinc-900">Settings</h1>
-        <p className="text-gray-500">Manage your account preferences</p>
+        <h1 className="text-2xl font-bold text-navy-900">Settings</h1>
+        <p className="text-sm text-slate-500">Manage your educator profile and account preferences</p>
       </div>
-
-      {demoError && (
-        <div className="bg-amber-50 text-amber-800 p-4 rounded-lg flex items-center gap-3 border border-amber-200">
-          <AlertCircle className="w-5 h-5 text-amber-600" />
-          <span className="font-medium">{demoError}</span>
-        </div>
-      )}
 
       <Card>
         <CardHeader>
-          <h3 className="text-lg font-semibold leading-none tracking-tight">Profile Information</h3>
-          <p className="text-sm text-zinc-500">Update your personal details</p>
+          <div className="flex items-center gap-2">
+            <User className="w-5 h-5 text-indigo-600" />
+            <h2 className="font-semibold text-navy-900">Profile</h2>
+          </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleAction} className="space-y-4">
+          <form onSubmit={handleReadOnlySubmit} className="space-y-4">
             <Input
               label="Full Name"
               value={DEMO_TEACHER.full_name}
               readOnly
+              className="bg-slate-50"
             />
             <Input
               label="Email Address"
               type="email"
               value={DEMO_TEACHER.email}
-              readOnly
+              disabled
+              className="bg-slate-50 text-slate-500"
             />
-            <div className="flex justify-end pt-2">
-              <Button type="submit">Save Changes</Button>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-slate-500">Role:</span>
+              <span className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-700 rounded-full capitalize">
+                {DEMO_TEACHER.role}
+              </span>
             </div>
+            <Button type="submit">
+              <Save className="w-4 h-4 mr-2" />
+              Save Changes
+            </Button>
           </form>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <h3 className="text-lg font-semibold leading-none tracking-tight">Change Password</h3>
-          <p className="text-sm text-zinc-500">Update your account password</p>
+          <div className="flex items-center gap-2">
+            <Lock className="w-5 h-5 text-indigo-600" />
+            <h2 className="font-semibold text-navy-900">Change Password</h2>
+          </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleAction} className="space-y-4">
-            <Input
-              label="Current Password"
-              type="password"
-              placeholder="••••••••"
-            />
-            <Input
-              label="New Password"
-              type="password"
-              placeholder="••••••••"
-            />
-            <Input
-              label="Confirm New Password"
-              type="password"
-              placeholder="••••••••"
-            />
-            <div className="flex justify-end pt-2">
-              <Button type="submit">Update Password</Button>
-            </div>
+          <form onSubmit={handleReadOnlySubmit} className="space-y-4">
+            <Input label="New Password" type="password" placeholder="At least 6 characters" />
+            <Input label="Confirm New Password" type="password" placeholder="Re-enter your new password" />
+            <Button type="submit">
+              <Lock className="w-4 h-4 mr-2" />
+              Update Password
+            </Button>
           </form>
         </CardContent>
       </Card>

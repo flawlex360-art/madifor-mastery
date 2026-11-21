@@ -1,9 +1,17 @@
 import { create } from 'zustand';
 import type { Question } from '@/types/curriculum';
-import { submitAttempt, getQuestionsForAssessment, getReviewQuestions, getInitialQuestionForAssessment, getRemainingQuestionsForAssessment, getAdaptiveQuestion } from '@/api/assessment';
+import {
+  submitAttempt,
+  getQuestionsForAssessment,
+  getReviewQuestions,
+  getInitialQuestionForAssessment,
+  getRemainingQuestionsForAssessment,
+  getAdaptiveQuestion,
+} from '@/api/assessment';
 import { createVoluntaryPracticeSession, endVoluntaryPracticeSession, getTopicClassLevel } from '@/api/voluntaryPractice';
 import { ASSESSMENT_CONFIG } from '@/config/assessment';
 import { generateUUID } from '@/lib/utils';
+import { gradeClientAnswer } from '@/lib/grading';
 import {
   savePendingAttempt,
   cacheQuestions,
@@ -28,25 +36,30 @@ export interface AssessmentQuestion extends Question {
   review_stage?: string;
 }
 
+type SessionStatus = 'idle' | 'loading' | 'in_progress' | 'feedback' | 'complete' | 'empty' | 'error';
+
 interface AssessmentState {
-  // Session
   sessionId: string | null;
   learnerId: string | null;
   topicId: string | null;
   questions: AssessmentQuestion[];
   currentIndex: number;
   answers: Map<string, AnswerRecord>;
-  status: 'idle' | 'loading' | 'in_progress' | 'feedback' | 'complete';
+  status: SessionStatus;
+  errorMessage: string | null;
   startedAt: Date | null;
   questionStartTime: number;
 
   // Practice mode
   practiceMode: boolean;
   practiceSessionId: string | null;
-  
+  adaptiveExhausted: boolean;
+
   // Review mode
   isReviewMode: boolean;
   isBackgroundLoading: boolean;
+  isFetchingNext: boolean;
+  lastAttemptPromise: Promise<void> | null;
 
   // Current question state
   selectedAnswer: number | string | null;
@@ -64,12 +77,21 @@ interface AssessmentState {
   selectAnswer: (answer: number | string) => void;
   submitAnswer: () => Promise<void>;
   revealHint: () => void;
-  nextQuestion: () => void;
+  nextQuestion: () => Promise<void>;
   reset: () => void;
 
   // Computed
   score: () => { correct: number; total: number; pct: number };
   isGradedQuestion: () => boolean;
+}
+
+function shuffleLocal<T>(items: T[]): T[] {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }
 
 export const useAssessmentStore = create<AssessmentState>((set, get) => ({
@@ -80,12 +102,16 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
   currentIndex: 0,
   answers: new Map(),
   status: 'idle',
+  errorMessage: null,
   startedAt: null,
   questionStartTime: Date.now(),
   practiceMode: false,
   practiceSessionId: null,
+  adaptiveExhausted: false,
   isReviewMode: false,
   isBackgroundLoading: false,
+  isFetchingNext: false,
+  lastAttemptPromise: null,
   selectedAnswer: null,
   isSubmitted: false,
   isCorrect: null,
@@ -93,73 +119,88 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
   pendingAttemptCount: 0,
 
   prefetchTopic: async (topicId: string) => {
-    // Check if we already have questions cached
-    const cached = await getCachedQuestionsByTopic(topicId);
-    if (cached.length >= ASSESSMENT_CONFIG.questionsPerTopic) return;
-    
-    // Fetch and cache in the background
-    if (isOnline()) {
-      try {
+    try {
+      const cached = await getCachedQuestionsByTopic(topicId);
+      if (cached.length >= ASSESSMENT_CONFIG.questionsPerTopic) return;
+
+      if (isOnline()) {
         const q = await getQuestionsForAssessment(topicId, ASSESSMENT_CONFIG.questionsPerTopic);
         if (q.length > 0) {
-          await cacheQuestions(q as CachedQuestion[]);
+          await cacheQuestions(q as unknown as CachedQuestion[]);
         }
-      } catch (e) {
-        console.warn('Prefetch failed:', e);
       }
+    } catch {
+      // Prefetch failures are non-fatal
     }
   },
 
   startAssessment: async (learnerId: string, topicId: string, practiceMode = false) => {
-    set({ status: 'loading', learnerId, topicId, practiceMode, isBackgroundLoading: true });
-    try {
-      const sessionId = generateUUID();
+    const sessionId = generateUUID();
+    set({
+      sessionId,
+      status: 'loading',
+      errorMessage: null,
+      learnerId,
+      topicId,
+      practiceMode,
+      practiceSessionId: null,
+      adaptiveExhausted: false,
+      isReviewMode: false,
+      isBackgroundLoading: true,
+      isFetchingNext: false,
+      lastAttemptPromise: null,
+      questions: [],
+      answers: new Map(),
+      currentIndex: 0,
+      selectedAnswer: null,
+      isSubmitted: false,
+      isCorrect: null,
+      hintsRevealed: 0,
+    });
 
-      // In practice mode, create a self-practice session
+    try {
       let practiceSessionId: string | null = null;
       if (practiceMode && isOnline()) {
-        const classLevel = await getTopicClassLevel(topicId);
-        practiceSessionId = await createVoluntaryPracticeSession({
-          learner_id: learnerId,
-          topic_id: topicId,
-          practice_class_level: classLevel || 'B7',
-        });
+        try {
+          const classLevel = await getTopicClassLevel(topicId);
+          practiceSessionId = await createVoluntaryPracticeSession({
+            learner_id: learnerId,
+            topic_id: topicId,
+            practice_class_level: classLevel || 'B7',
+          });
+        } catch {
+          practiceSessionId = null;
+        }
       }
 
-      // Fetch topic questions (Stale-While-Revalidate pattern)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let topicQuestions: any[] = [];
-      let initialQuestion = null;
+      if (get().sessionId !== sessionId) return;
+
+      let topicQuestions: CachedQuestion[] = [];
+      let initialQuestion: Question | null = null;
 
       if (practiceMode && isOnline()) {
-        // ADAPTIVE PATH: Fetch the precise question for their ability
-        const adaptiveQ = await getAdaptiveQuestion(learnerId, topicId);
-        if (adaptiveQ) {
-          initialQuestion = adaptiveQ;
-        }
+        initialQuestion = await getAdaptiveQuestion(learnerId, topicId, []);
       }
 
       if (!initialQuestion) {
-        topicQuestions = await getCachedQuestionsByTopic(topicId);
+        topicQuestions = shuffleLocal(await getCachedQuestionsByTopic(topicId));
         if (topicQuestions.length > 0) {
-           // Use the first cached question
-           initialQuestion = topicQuestions[0];
+          initialQuestion = topicQuestions[0] as unknown as Question;
         } else if (isOnline()) {
-           // FAST PATH: Get 1 question immediately
-           const initialBatch = await getInitialQuestionForAssessment(topicId);
-           if (initialBatch.length > 0) {
-             initialQuestion = initialBatch[0];
-           }
+          const initialBatch = await getInitialQuestionForAssessment(topicId);
+          if (initialBatch.length > 0) {
+            initialQuestion = initialBatch[0];
+          }
         }
       }
 
+      if (get().sessionId !== sessionId) return;
+
       if (!initialQuestion) {
-         // No questions available
-         set({ status: 'idle', isBackgroundLoading: false });
-         return;
+        set({ status: 'empty', isBackgroundLoading: false, errorMessage: null });
+        return;
       }
 
-      // Start the assessment with just this 1 question!
       const firstAssessmentQuestion: AssessmentQuestion = { ...initialQuestion, is_review: false };
 
       set({
@@ -176,110 +217,153 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
         isSubmitted: false,
         isCorrect: null,
         hintsRevealed: 0,
-        isBackgroundLoading: true,
+        isBackgroundLoading: !practiceMode,
       });
 
-      // FIRE AND FORGET: Load the rest in the background
+      if (practiceMode && isOnline()) {
+        return;
+      }
+
       const loadBackground = async () => {
-         if (practiceMode && isOnline()) {
-            // Adaptive mode fetches questions just-in-time
+        try {
+          const maxAdditional = ASSESSMENT_CONFIG.questionsPerTopic - 1;
+          let remainingTopicQuestions: Question[] = [];
+
+          if (topicQuestions.length >= ASSESSMENT_CONFIG.questionsPerTopic) {
+            remainingTopicQuestions = topicQuestions.slice(1, ASSESSMENT_CONFIG.questionsPerTopic) as unknown as Question[];
+          } else if (isOnline()) {
+            remainingTopicQuestions = await getRemainingQuestionsForAssessment(
+              topicId,
+              maxAdditional,
+              initialQuestion!.id
+            );
+          } else if (topicQuestions.length > 1) {
+            remainingTopicQuestions = topicQuestions.slice(1, ASSESSMENT_CONFIG.questionsPerTopic) as unknown as Question[];
+          }
+
+          let reviewQuestions: Record<string, unknown>[] = [];
+          if (!practiceMode && isOnline()) {
+            try {
+              reviewQuestions = await getReviewQuestions(learnerId, ASSESSMENT_CONFIG.reviewInterleaveCount.max);
+            } catch {
+              reviewQuestions = [];
+            }
+          }
+
+          if (get().sessionId !== sessionId) return;
+
+          const seenIds = new Set(get().questions.map((q) => q.id));
+          const additionalQuestions: AssessmentQuestion[] = [];
+
+          for (const q of remainingTopicQuestions) {
+            if (!seenIds.has(q.id)) {
+              seenIds.add(q.id);
+              additionalQuestions.push({ ...q, is_review: false });
+            }
+          }
+
+          for (const rq of reviewQuestions) {
+            const rqId = rq.id as string;
+            if (!seenIds.has(rqId)) {
+              seenIds.add(rqId);
+              additionalQuestions.push({
+                ...(rq as unknown as Question),
+                is_review: true,
+                review_topic_id: rq.review_topic_id as string | undefined,
+                review_stage: rq.review_stage as string | undefined,
+                topic_id: (rq.review_topic_id as string) || (rq.topic_id as string),
+              });
+            }
+          }
+
+          if (additionalQuestions.length > 0) {
+            const shuffledAdditional = shuffleLocal(additionalQuestions);
+            set((state) => {
+              if (state.sessionId !== sessionId) return state;
+              return {
+                questions: [...state.questions, ...shuffledAdditional],
+                isBackgroundLoading: false,
+              };
+            });
+          } else {
+            set((state) => (state.sessionId === sessionId ? { isBackgroundLoading: false } : state));
+          }
+
+          if (isOnline()) {
+            const toCache = [initialQuestion!, ...remainingTopicQuestions];
+            if (toCache.length > 0) {
+              cacheQuestions(toCache as unknown as CachedQuestion[]).catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.error('Background load failed', e);
+          if (get().sessionId === sessionId) {
             set({ isBackgroundLoading: false });
-            return;
-         }
-         try {
-           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-           let remainingTopicQuestions: any[] = [];
-           if (topicQuestions.length > 1) {
-              // We have cache, just use the rest of it
-              remainingTopicQuestions = topicQuestions.slice(1);
-           } else if (isOnline()) {
-              // Fetch remaining from DB
-              remainingTopicQuestions = await getRemainingQuestionsForAssessment(topicId, ASSESSMENT_CONFIG.questionsPerTopic - 1, initialQuestion.id);
-           }
-
-           let reviewQuestions: Record<string, unknown>[] = [];
-           if (!practiceMode && isOnline()) {
-             reviewQuestions = await getReviewQuestions(learnerId, ASSESSMENT_CONFIG.reviewInterleaveCount.max);
-           }
-
-           // Combine and shuffle
-           const additionalQuestions: AssessmentQuestion[] = [
-             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-             ...remainingTopicQuestions.map((q: any) => ({ ...q, is_review: false })),
-             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-             ...reviewQuestions.map((q: any) => ({
-               ...q,
-               is_review: true,
-               topic_id: q.review_topic_id,
-             })),
-           ];
-
-           if (additionalQuestions.length > 0) {
-             // Shuffle additional questions
-             for (let i = additionalQuestions.length - 1; i > 0; i--) {
-               const j = Math.floor(Math.random() * (i + 1));
-               [additionalQuestions[i], additionalQuestions[j]] = [additionalQuestions[j], additionalQuestions[i]];
-             }
-
-             // Append to state safely
-             set((state) => ({
-                questions: [...state.questions, ...additionalQuestions],
-             }));
-           }
-           
-           set({ isBackgroundLoading: false });
-
-           // Background cache update
-           if (isOnline()) {
-             const allQ = [initialQuestion, ...remainingTopicQuestions];
-             if (allQ.length > 0) {
-               cacheQuestions(allQ as CachedQuestion[]).catch(() => {});
-             }
-           }
-         } catch (e) {
-           console.error("Background load failed", e);
-           set({ isBackgroundLoading: false });
-         }
+          }
+        }
       };
 
-      loadBackground(); // DO NOT AWAIT!
-
+      loadBackground();
     } catch (err) {
-      set({ status: 'idle', isBackgroundLoading: false });
-      throw err;
+      if (get().sessionId === sessionId) {
+        set({
+          status: 'error',
+          isBackgroundLoading: false,
+          errorMessage: err instanceof Error ? err.message : 'Unable to start assessment.',
+        });
+      }
     }
   },
 
   startReviewSession: async (learnerId: string) => {
-    set({ status: 'loading', learnerId, topicId: null, practiceMode: false, isReviewMode: true });
-    try {
-      const sessionId = generateUUID();
+    const sessionId = generateUUID();
+    set({
+      sessionId,
+      status: 'loading',
+      errorMessage: null,
+      learnerId,
+      topicId: null,
+      practiceMode: false,
+      practiceSessionId: null,
+      adaptiveExhausted: false,
+      isReviewMode: true,
+      isBackgroundLoading: false,
+      isFetchingNext: false,
+      lastAttemptPromise: null,
+      questions: [],
+      answers: new Map(),
+      currentIndex: 0,
+      selectedAnswer: null,
+      isSubmitted: false,
+      isCorrect: null,
+      hintsRevealed: 0,
+    });
 
+    try {
       let reviewQuestions: Record<string, unknown>[] = [];
       if (isOnline()) {
         reviewQuestions = await getReviewQuestions(learnerId, 15);
       }
 
-      const allQuestions: AssessmentQuestion[] = reviewQuestions.map((q: any) => ({
-        ...q,
-        is_review: true,
-        topic_id: q.review_topic_id,
-      }));
+      if (get().sessionId !== sessionId) return;
+
+      const allQuestions: AssessmentQuestion[] = shuffleLocal(
+        reviewQuestions.map((q) => ({
+          ...(q as unknown as Question),
+          is_review: true,
+          review_topic_id: q.review_topic_id as string | undefined,
+          review_stage: q.review_stage as string | undefined,
+          topic_id: (q.review_topic_id as string) || (q.topic_id as string),
+        }))
+      );
 
       if (allQuestions.length === 0) {
-        set({ status: 'idle' });
+        set({ status: 'empty', errorMessage: null });
         return;
-      }
-
-      // Shuffle
-      for (let i = allQuestions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
       }
 
       set({
         sessionId,
-        practiceSessionId: null,
         isReviewMode: true,
         questions: allQuestions,
         currentIndex: 0,
@@ -293,8 +377,12 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
         hintsRevealed: 0,
       });
     } catch (err) {
-      set({ status: 'idle' });
-      throw err;
+      if (get().sessionId === sessionId) {
+        set({
+          status: 'error',
+          errorMessage: err instanceof Error ? err.message : 'Unable to load review session.',
+        });
+      }
     }
   },
 
@@ -307,63 +395,17 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
     const state = get();
     if (state.selectedAnswer === null || state.isSubmitted) return;
 
-    // M-1: Set isSubmitted immediately to prevent double-submit
+    const question = state.questions[state.currentIndex];
+    if (!question) return;
+
+    if (question.question_type === 'fill_in_blank' && String(state.selectedAnswer).trim().length === 0) {
+      return;
+    }
+
     set({ isSubmitted: true });
 
-    const question = state.questions[state.currentIndex];
-    const correctAnswer = question.correct_answer;
-    const timeTaken = Math.round((Date.now() - state.questionStartTime) / 1000);
-
-    // C-3 + H-1: Normalize answer comparison
-    // MCQ: compare as numbers (JSONB may deserialize as string or number)
-    // Fill-in-blank: case-insensitive, trimmed comparison
-    let isCorrect: boolean;
-    if (question.question_type === 'multiple_choice') {
-      isCorrect = Number(state.selectedAnswer) === Number(correctAnswer);
-    } else if (typeof correctAnswer === 'string' || typeof correctAnswer === 'number') {
-      const normalize = (str: string) => str.toLowerCase().trim().replace(/\s+/g, ' ');
-      const selected = normalize(String(state.selectedAnswer));
-      const correctStr = String(correctAnswer);
-      
-      // Allow multiple acceptable answers separated by comma or pipe
-      const acceptableAnswers = correctStr.split(/[,|]/).map(normalize);
-      
-      const selectedNum = parseFloat(selected);
-      if (!isNaN(selectedNum) && /^\d+(\.\d+)?$/.test(selected.replace(/[^\d.]/g, ''))) {
-        // If they typed a number, check if it matches any of the acceptable answers numerically
-        isCorrect = acceptableAnswers.some(ans => {
-          const correctNum = parseFloat(ans);
-          return !isNaN(correctNum) && Math.abs(selectedNum - correctNum) < 0.01;
-        });
-      } else {
-        // Exact string match against any acceptable answer first
-        if (acceptableAnswers.includes(selected)) {
-          isCorrect = true;
-        } else {
-          // Keyword matching: if learner typed ANY significant keyword from the correct answer
-          const stopWords = new Set([
-            'the', 'a', 'an', 'is', 'are', 'was', 'were', 'and', 'or', 'of', 'in', 'on', 'at', 
-            'to', 'for', 'it', 'this', 'that', 'i', 'you', 'he', 'she', 'we', 'they', 'my', 
-            'your', 'his', 'her', 'our', 'their', 'be', 'do', 'does', 'did', 'have', 'has', 'had'
-          ]);
-          
-          const extractKeywords = (str: string) => 
-            str.toLowerCase()
-               .replace(/[^\w\s]/g, '')
-               .split(/\s+/)
-               .filter(w => w.length > 0 && !stopWords.has(w));
-               
-          const correctKeywords = new Set(acceptableAnswers.flatMap(extractKeywords));
-          const selectedKeywords = extractKeywords(selected);
-          
-          // If any selected keyword matches any correct keyword, mark correct
-          isCorrect = selectedKeywords.some(w => correctKeywords.has(w));
-        }
-      }
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      isCorrect = state.selectedAnswer === (correctAnswer as any);
-    }
+    const timeTaken = Math.max(0, Math.round((Date.now() - state.questionStartTime) / 1000));
+    const isCorrect = gradeClientAnswer(question, state.selectedAnswer);
 
     const record: AnswerRecord = {
       answer: state.selectedAnswer,
@@ -375,15 +417,16 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
     const newAnswers = new Map(state.answers);
     newAnswers.set(question.id, record);
 
-    // Determine attempt type: self_practice for practice mode, graded/review otherwise
     const attemptType = state.practiceMode
       ? 'self_practice'
-      : (question.is_review ? 'review' : 'graded');
+      : question.is_review
+      ? 'review'
+      : 'graded';
 
     const attemptData = {
       learner_id: state.learnerId!,
       question_id: question.id,
-      topic_id: question.is_review ? question.review_topic_id! : question.topic_id,
+      topic_id: question.is_review && question.review_topic_id ? question.review_topic_id : question.topic_id,
       is_correct: isCorrect,
       learner_answer: state.selectedAnswer,
       time_taken: timeTaken,
@@ -393,18 +436,9 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
       session_question_index: state.currentIndex,
     };
 
-    // OPTIMISTIC UI UPDATE: set state immediately
-    set({
-      answers: newAnswers,
-      isSubmitted: true,
-      isCorrect,
-      status: 'feedback',
-    });
-
+    let attemptPromise: Promise<void> | null = null;
     if (isOnline()) {
-      // Fire and forget
-      submitAttempt(attemptData).catch(async () => {
-        // If submit fails, queue for later
+      attemptPromise = submitAttempt(attemptData).catch(async () => {
         await savePendingAttempt({
           ...attemptData,
           id: generateOfflineId(),
@@ -413,36 +447,44 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
         set((s) => ({ pendingAttemptCount: s.pendingAttemptCount + 1 }));
       });
     } else {
-      // Offline — save to IndexedDB queue
       savePendingAttempt({
         ...attemptData,
         id: generateOfflineId(),
         created_at: new Date().toISOString(),
-      }).then(() => {
-        set((s) => ({ pendingAttemptCount: s.pendingAttemptCount + 1 }));
-      });
+      })
+        .then(() => {
+          set((s) => ({ pendingAttemptCount: s.pendingAttemptCount + 1 }));
+        })
+        .catch(() => {});
     }
 
-    // Save assessment state for refresh recovery
-    await saveAssessmentState({
-      id: `${state.learnerId}:${state.topicId}`,
-      session_id: state.sessionId!,
-      learner_id: state.learnerId!,
-      topic_id: state.topicId!,
-      questions: state.questions as unknown as Record<string, unknown>[],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      answers: Array.from(newAnswers.entries()) as any,
-      current_index: state.currentIndex,
-      practice_mode: state.practiceMode,
-      saved_at: new Date().toISOString(),
+    set({
+      answers: newAnswers,
+      isSubmitted: true,
+      isCorrect,
+      status: 'feedback',
+      lastAttemptPromise: attemptPromise,
     });
 
+    const stateKey = `${state.learnerId}:${state.topicId ?? 'review'}`;
+    saveAssessmentState({
+      id: stateKey,
+      session_id: state.sessionId!,
+      learner_id: state.learnerId!,
+      topic_id: state.topicId,
+      questions: state.questions as unknown as Record<string, unknown>[],
+      answers: Array.from(newAnswers.entries()) as unknown as [string, Record<string, unknown>][],
+      current_index: state.currentIndex,
+      practice_mode: state.practiceMode,
+      is_review_mode: state.isReviewMode,
+      saved_at: new Date().toISOString(),
+    }).catch(() => {});
   },
 
   revealHint: () => {
     const state = get();
     const question = state.questions[state.currentIndex];
-    const maxHints = question.hints?.length ?? 0;
+    const maxHints = question?.hints?.length ?? 0;
     if (state.hintsRevealed < maxHints) {
       set({ hintsRevealed: state.hintsRevealed + 1 });
     }
@@ -450,59 +492,83 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
 
   nextQuestion: async () => {
     const state = get();
-    const nextIdx = state.currentIndex + 1;
-    
-    // ADAPTIVE PATH: If in practice mode and not reached max length (e.g. 10 questions)
-    if (nextIdx >= state.questions.length && state.practiceMode && isOnline() && state.questions.length < 10) {
-      set({ isBackgroundLoading: true });
-      try {
-        const nextQ = await getAdaptiveQuestion(state.learnerId!, state.topicId!);
-        if (nextQ) {
-          set(s => ({ 
-            questions: [...s.questions, { ...nextQ, is_review: false }],
-            isBackgroundLoading: false
-          }));
-          // Proceed to next question below
-        } else {
-          set({ isBackgroundLoading: false });
+    if (state.isFetchingNext) return;
+    set({ isFetchingNext: true });
+
+    try {
+      const nextIdx = state.currentIndex + 1;
+      const targetLength = ASSESSMENT_CONFIG.questionsPerTopic;
+
+      if (
+        nextIdx >= state.questions.length &&
+        state.practiceMode &&
+        isOnline() &&
+        !state.adaptiveExhausted &&
+        state.questions.length < targetLength
+      ) {
+        set({ isBackgroundLoading: true });
+        try {
+          if (state.lastAttemptPromise) {
+            await state.lastAttemptPromise;
+          }
+          const excludeIds = get().questions.map((q) => q.id);
+          const nextQ = await getAdaptiveQuestion(state.learnerId!, state.topicId!, excludeIds);
+          if (nextQ && !excludeIds.includes(nextQ.id)) {
+            set((s) => ({
+              questions: [...s.questions, { ...nextQ, is_review: false }],
+              isBackgroundLoading: false,
+            }));
+          } else {
+            set({ isBackgroundLoading: false, adaptiveExhausted: true });
+          }
+        } catch (e) {
+          console.error('Failed to fetch adaptive question', e);
+          set({ isBackgroundLoading: false, adaptiveExhausted: true });
         }
-      } catch (e) {
-        set({ isBackgroundLoading: false });
-        console.error('Failed to fetch adaptive question', e);
       }
-    }
 
-    // Must refetch state because we might have modified questions array
-    const freshState = get();
+      const freshState = get();
 
-    if (nextIdx >= freshState.questions.length) {
-      if (freshState.isBackgroundLoading) {
-        return; // Wait for background loading
+      if (nextIdx >= freshState.questions.length) {
+        if (freshState.isBackgroundLoading) {
+          return;
+        }
+        if (freshState.practiceMode && freshState.practiceSessionId && isOnline()) {
+          const s = freshState.score();
+          endVoluntaryPracticeSession(freshState.practiceSessionId, s.total, s.correct).catch(() => {});
+        }
+        if (freshState.learnerId) {
+          const stateKey = `${freshState.learnerId}:${freshState.topicId ?? 'review'}`;
+          clearAssessmentState(stateKey).catch(() => {});
+        }
+        set({ status: 'complete', practiceSessionId: null });
+      } else {
+        set({
+          currentIndex: nextIdx,
+          selectedAnswer: null,
+          isSubmitted: false,
+          isCorrect: null,
+          hintsRevealed: 0,
+          questionStartTime: Date.now(),
+          status: 'in_progress',
+        });
       }
-      // Session complete — if practice mode, end the practice session
-      if (freshState.practiceMode && freshState.practiceSessionId && isOnline()) {
-        const s = freshState.score();
-        await endVoluntaryPracticeSession(freshState.practiceSessionId, s.total, s.correct);
-      }
-      // Clear saved assessment state
-      if (freshState.learnerId && freshState.topicId) {
-        await clearAssessmentState(`${freshState.learnerId}:${freshState.topicId}`);
-      }
-      set({ status: 'complete' });
-    } else {
-      set({
-        currentIndex: nextIdx,
-        selectedAnswer: null,
-        isSubmitted: false,
-        isCorrect: null,
-        hintsRevealed: 0,
-        questionStartTime: Date.now(),
-        status: 'in_progress',
-      });
+    } finally {
+      set({ isFetchingNext: false });
     }
   },
 
   reset: () => {
+    const state = get();
+    if (state.practiceMode && state.practiceSessionId && isOnline()) {
+      const s = state.score();
+      endVoluntaryPracticeSession(state.practiceSessionId, s.total, s.correct).catch(() => {});
+    }
+    if (state.learnerId) {
+      const stateKey = `${state.learnerId}:${state.topicId ?? 'review'}`;
+      clearAssessmentState(stateKey).catch(() => {});
+    }
+
     set({
       sessionId: null,
       learnerId: null,
@@ -511,12 +577,16 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
       currentIndex: 0,
       answers: new Map(),
       status: 'idle',
+      errorMessage: null,
       startedAt: null,
       questionStartTime: Date.now(),
       practiceMode: false,
       practiceSessionId: null,
+      adaptiveExhausted: false,
       isReviewMode: false,
       isBackgroundLoading: false,
+      isFetchingNext: false,
+      lastAttemptPromise: null,
       selectedAnswer: null,
       isSubmitted: false,
       isCorrect: null,
@@ -525,12 +595,25 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
   },
 
   score: () => {
-    const answers = get().answers;
+    const { answers, questions, isReviewMode } = get();
     let correct = 0;
-    for (const record of answers.values()) {
-      if (record.is_correct) correct++;
+    let total = 0;
+
+    if (isReviewMode) {
+      for (const record of answers.values()) {
+        total++;
+        if (record.is_correct) correct++;
+      }
+    } else {
+      const reviewIds = new Set(questions.filter((q) => q.is_review).map((q) => q.id));
+      for (const [qId, record] of answers.entries()) {
+        if (!reviewIds.has(qId)) {
+          total++;
+          if (record.is_correct) correct++;
+        }
+      }
     }
-    const total = answers.size;
+
     return { correct, total, pct: total > 0 ? Math.round((correct / total) * 100) : 0 };
   },
 

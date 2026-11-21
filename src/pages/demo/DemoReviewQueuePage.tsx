@@ -1,61 +1,80 @@
-import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
-import { Clock, AlertTriangle, CheckCircle, Eye } from 'lucide-react';
+import { Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { getDemoReviewQueue } from './demoData';
-import { toast } from '@/stores/toastStore';
 
 export default function DemoReviewQueuePage() {
   const reviews = getDemoReviewQueue();
-  const [selectedReview, setSelectedReview] = useState<typeof reviews[0] | null>(null);
+
+  const byLearner = new Map<string, typeof reviews>();
+  for (const r of reviews) {
+    const existing = byLearner.get(r.learner_id) || [];
+    existing.push(r);
+    byLearner.set(r.learner_id, existing);
+  }
 
   const totalPending = reviews.length;
-  const totalOverdue = reviews.filter(r => new Date(r.submitted_at).getTime() < Date.now() - 86400000).length;
-  const learnerCount = new Set(reviews.map(r => r.learner_id)).size;
+  const totalOverdue = reviews.filter((r) => r.is_overdue).length;
+  const learnerCount = byLearner.size;
 
-  const handleAction = () => {
-    toast.error('Editing is disabled in the demo environment.');
+  const getStageLabel = (stage: string) => {
+    switch (stage) {
+      case 'missed': return 'Missed';
+      case 'review_1': return 'Review 1 (3d)';
+      case 'review_2': return 'Review 2 (7d)';
+      case 'review_3': return 'Review 3 (14d)';
+      default: return stage;
+    }
+  };
+
+  const getStageColor = (stage: string) => {
+    switch (stage) {
+      case 'missed': return 'bg-rose-50 text-rose-700';
+      case 'review_1': return 'bg-amber-50 text-amber-700';
+      case 'review_2': return 'bg-indigo-50 text-indigo-700';
+      case 'review_3': return 'bg-emerald-50 text-emerald-700';
+      default: return 'bg-slate-100 text-slate-600';
+    }
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-zinc-900">Review Queue</h1>
-        <p className="text-gray-500">Review AI-graded open-ended answers</p>
+        <h1 className="text-2xl font-bold text-navy-900">Review Queue</h1>
+        <p className="text-sm text-slate-500">Track pending spaced-repetition reviews across your class</p>
       </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+          <CardContent className="p-4 flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
               <Clock className="w-5 h-5 text-amber-600" />
             </div>
             <div>
-              <p className="text-xl font-bold text-zinc-900">{totalPending}</p>
-              <p className="text-xs text-gray-500">Pending Reviews</p>
+              <p className="text-xl font-bold text-navy-900 tabular-nums">{totalPending}</p>
+              <p className="text-xs text-slate-500">Pending Reviews</p>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
+          <CardContent className="p-4 flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-5 h-5 text-rose-600" />
             </div>
             <div>
-              <p className="text-xl font-bold text-zinc-900">{totalOverdue}</p>
-              <p className="text-xs text-gray-500">Overdue (24h+)</p>
+              <p className="text-xl font-bold text-navy-900 tabular-nums">{totalOverdue}</p>
+              <p className="text-xs text-slate-500">Overdue</p>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-blue-600" />
+          <CardContent className="p-4 flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
+              <CheckCircle className="w-5 h-5 text-indigo-600" />
             </div>
             <div>
-              <p className="text-xl font-bold text-zinc-900">{learnerCount}</p>
-              <p className="text-xs text-gray-500">Learners</p>
+              <p className="text-xl font-bold text-navy-900 tabular-nums">{learnerCount}</p>
+              <p className="text-xs text-slate-500">Learners with Reviews</p>
             </div>
           </CardContent>
         </Card>
@@ -63,63 +82,47 @@ export default function DemoReviewQueuePage() {
 
       <Card>
         <CardHeader>
-          <h2 className="font-semibold text-zinc-900">Pending Answers</h2>
+          <h2 className="font-semibold text-navy-900">Pending Spaced-Repetition Items by Learner</h2>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="divide-y">
-            {reviews.map((r) => (
-              <div key={r.id} className="p-4 hover:bg-gray-50 transition-colors">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <h3 className="font-medium text-zinc-900">{r.learner_name}</h3>
-                    <p className="text-sm text-gray-500">{new Date(r.submitted_at).toLocaleString()}</p>
+          <div className="divide-y divide-slate-100">
+            {Array.from(byLearner.entries()).map(([learnerId, items]) => {
+              const overdueCount = items.filter((r) => r.is_overdue).length;
+              return (
+                <div key={learnerId} className="px-4 py-3.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-navy-900">{items[0].display_name}</span>
+                      {overdueCount > 0 && (
+                        <span className="px-2 py-0.5 text-xs font-medium bg-rose-50 text-rose-700 rounded-full">
+                          {overdueCount} overdue
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-slate-500">
+                      {items.length} question{items.length !== 1 ? 's' : ''}
+                    </span>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => setSelectedReview(r)}>
-                    <Eye className="w-4 h-4 mr-2" />
-                    Review
-                  </Button>
+                  <div className="flex flex-wrap gap-1.5">
+                    {items.map((item, i) => (
+                      <span
+                        key={`${item.question_id}-${i}`}
+                        className={`px-2.5 py-1 text-xs font-medium rounded-full ${getStageColor(item.stage)} ${
+                          item.is_overdue ? 'ring-1 ring-rose-300' : ''
+                        }`}
+                        title={`${item.topic_code} — ${item.topic_name}\nDue: ${new Date(item.due_at).toLocaleDateString('en-GB')}`}
+                      >
+                        {item.topic_code.split('.').pop()} &middot; {getStageLabel(item.stage)}
+                        {item.is_overdue && ' (Overdue)'}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <p className="text-sm text-zinc-800 line-clamp-1 border-l-2 border-gray-200 pl-3">
-                  <span className="font-medium">Q:</span> {r.question_text}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
-
-      {/* Review Modal */}
-      {selectedReview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedReview(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-              <h2 className="text-lg font-bold text-zinc-900">Review Answer: {selectedReview.learner_name}</h2>
-              <div className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-semibold">
-                AI Score: {selectedReview.ai_score}%
-              </div>
-            </div>
-            <div className="p-6 overflow-y-auto space-y-6">
-              <div>
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Question</h4>
-                <p className="text-zinc-900 bg-gray-50 p-4 rounded-lg border border-gray-100">{selectedReview.question_text}</p>
-              </div>
-              <div>
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Student Answer</h4>
-                <p className="text-zinc-900 bg-blue-50/50 p-4 rounded-lg border border-blue-100">{selectedReview.student_answer}</p>
-              </div>
-              <div>
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">AI Feedback</h4>
-                <p className="text-zinc-700 bg-amber-50/50 p-4 rounded-lg border border-amber-100">{selectedReview.ai_feedback}</p>
-              </div>
-            </div>
-            <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50 rounded-b-2xl">
-              <Button variant="outline" onClick={() => setSelectedReview(null)}>Close</Button>
-              <Button variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={handleAction}>Reject Answer</Button>
-              <Button onClick={handleAction}>Approve Answer</Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -3,10 +3,12 @@ import Select from '@/components/ui/Select';
 import KpiCards from '@/components/dashboard/KpiCards';
 import MasteryHeatmap from '@/components/dashboard/MasteryHeatmap';
 import LearnerTable from '@/components/dashboard/LearnerTable';
-import AlertPanel, { generateAlerts, type DashboardAlert } from '@/components/dashboard/AlertPanel';
+import AlertPanel from '@/components/dashboard/AlertPanel';
+import { generateAlerts, type DashboardAlert } from '@/lib/alerts';
 import BECEReadiness from '@/components/dashboard/BECEReadiness';
 import ExportButton from '@/components/dashboard/ExportButton';
 import LearnerDrillDown from '@/components/dashboard/LearnerDrillDown';
+import { computeBeceReadiness } from '@/lib/exportUtils';
 import {
   DEMO_CLASSES,
   DEMO_TEACHER,
@@ -23,23 +25,31 @@ export default function DemoDashboardPage() {
   const teacher = DEMO_TEACHER;
   const classes = DEMO_CLASSES;
   const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id || '');
-  
+
   const [learnerSummary, setLearnerSummary] = useState<Record<string, unknown>[]>([]);
   const [masteryOverview, setMasteryOverview] = useState<Record<string, unknown>[]>([]);
   const [voluntaryPractice, setVoluntaryPractice] = useState<Record<string, unknown>[]>([]);
-  const [totalTopics, setTotalTopics] = useState(0);
+  const [heatmapCellData, setHeatmapCellData] = useState<
+    {
+      learner_id: string;
+      topic_id: string;
+      first_pass_pct: number;
+      retained_mastered: boolean;
+      first_pass_mastered: boolean;
+      status: string;
+    }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [alerts, setAlerts] = useState<DashboardAlert[]>([]);
   const [heatmapView, setHeatmapView] = useState<'first_pass' | 'retained'>('first_pass');
 
-  // Drill-down state
   const [drillDownLearnerId, setDrillDownLearnerId] = useState<string | null>(null);
   const [drillDownData, setDrillDownData] = useState<{
     learner: Record<string, unknown>;
     topicMastery: Record<string, unknown>[];
   } | null>(null);
 
-  const selectedClass = classes.find(c => c.id === selectedClassId);
+  const selectedClass = classes.find((c) => c.id === selectedClassId);
 
   useEffect(() => {
     if (!selectedClassId) return;
@@ -47,26 +57,25 @@ export default function DemoDashboardPage() {
     setDrillDownLearnerId(null);
     setDrillDownData(null);
 
-    // Simulate network delay for realism
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       const ls = getDemoLearnerSummary(selectedClassId);
       const mo = getDemoMasteryOverview(selectedClassId);
       const vp = getDemoVoluntaryPractice(selectedClassId);
-      const tt = DEMO_TOPICS.length;
+      const cells = getDemoHeatmapCells(selectedClassId);
 
       setLearnerSummary(ls);
       setMasteryOverview(mo);
       setVoluntaryPractice(vp);
-      setTotalTopics(tt);
+      setHeatmapCellData(cells);
 
-      // Detect declining trends using demo history
       const history = getDemoHistory();
       const declining: { learner_id: string; display_name: string; topic_name: string }[] = [];
-      const topicNameMap = new Map(DEMO_TOPICS.map(t => [t.id, t.name]));
-      const learnerNameMap = new Map(ls.map(l => [l.learner_id as string, l.display_name as string]));
+      const topicNameMap = new Map(DEMO_TOPICS.map((t) => [t.id, t.name]));
+      const learnerNameMap = new Map(ls.map((l) => [l.learner_id, l.display_name]));
 
-      const grouped = new Map<string, Record<string, unknown>[]>();
+      const grouped = new Map<string, typeof history>();
       for (const h of history) {
+        if (!learnerNameMap.has(h.learner_id)) continue;
         const key = `${h.learner_id}:${h.topic_id}`;
         const existing = grouped.get(key) || [];
         existing.push(h);
@@ -75,41 +84,23 @@ export default function DemoDashboardPage() {
 
       for (const [key, entries] of grouped) {
         if (entries.length < 2) continue;
-        const latest = entries[0].first_pass_pct as number;
-        const previous = entries[1].first_pass_pct as number;
-        if (latest < previous && previous - latest >= 10) {
+        if (entries[1].first_pass_pct - entries[0].first_pass_pct >= 10) {
           const [learnerId, topicId] = key.split(':');
           declining.push({
             learner_id: learnerId,
             display_name: learnerNameMap.get(learnerId) || 'Unknown',
-            topic_name: (topicNameMap.get(topicId) as string) || 'Unknown topic',
+            topic_name: topicNameMap.get(topicId) || 'Unknown topic',
           });
         }
       }
 
       setAlerts(generateAlerts(ls, selectedClassId, declining));
       setLoading(false);
-    }, 600);
+    }, 200);
+
+    return () => clearTimeout(timer);
   }, [selectedClassId]);
 
-  // Drill-down handler
-  const handleLearnerClick = async (learnerId: string) => {
-    setDrillDownLearnerId(learnerId);
-    const learner = learnerSummary.find((l) => l.learner_id === learnerId);
-    if (!learner) return;
-    
-    // Simulate delay
-    setTimeout(() => {
-      const topicMastery = getDemoDrillDown(learnerId);
-      setDrillDownData({ learner, topicMastery });
-    }, 300);
-  };
-
-  const handleDismissAlert = (alertId: string) => {
-    setAlerts((prev) => prev.filter((a) => a.id !== alertId));
-  };
-
-  // Merge voluntary practice (demo doesn't have last_active for simplicity, just VP)
   const enrichedLearners: Record<string, unknown>[] = useMemo(
     () =>
       learnerSummary.map((learner) => {
@@ -118,52 +109,65 @@ export default function DemoDashboardPage() {
           ...learner,
           voluntary_practice_sessions: (vpData?.voluntary_practice_sessions as number) || 0,
           voluntary_practice_topics: (vpData?.voluntary_practice_topics as number) || 0,
-          last_active: new Date().toISOString(), // Mock recent activity
+          last_active: '2026-11-20T15:30:00Z',
         };
       }),
     [learnerSummary, voluntaryPractice]
   );
 
-  // KPI calculations
+  const handleLearnerClick = (learnerId: string) => {
+    const learner = enrichedLearners.find((l) => l.learner_id === learnerId);
+    if (!learner) return;
+    setDrillDownLearnerId(learnerId);
+    setDrillDownData({
+      learner: { ...learner, class_name: selectedClass?.name || '' },
+      topicMastery: getDemoDrillDown(learnerId),
+    });
+  };
+
+  const handleDismissAlert = (alertId: string) => {
+    setAlerts((prev) => prev.filter((a) => a.id !== alertId));
+  };
+
+  const totalTopics = DEMO_TOPICS.length;
   const totalLearners = learnerSummary.length;
+  const activeLearners = learnerSummary.filter(
+    (l) => ((l.topics_attempted as number) || 0) > 0
+  );
   const avgMastery =
-    learnerSummary.length > 0
+    activeLearners.length > 0
       ? Math.round(
-          learnerSummary.reduce(
-            (sum: number, l: Record<string, unknown>) => sum + ((l.overall_avg_pct as number) || 0),
+          activeLearners.reduce(
+            (sum, l) => sum + ((l.overall_avg_pct as number) || 0),
             0
-          ) / learnerSummary.length
+          ) / activeLearners.length
         )
       : 0;
-  const learnersAtRisk = learnerSummary.filter(
-    (l: Record<string, unknown>) => ((l.overall_avg_pct as number) || 0) < 40
+  const learnersAtRisk = activeLearners.filter(
+    (l) => ((l.overall_avg_pct as number) || 0) < 40
   ).length;
   const topicsAttempted = learnerSummary.reduce(
-    (sum: number, l: Record<string, unknown>) => sum + ((l.topics_attempted as number) || 0),
+    (sum, l) => sum + ((l.topics_attempted as number) || 0),
     0
   );
   const totalVoluntaryPractice = voluntaryPractice.reduce(
-    (sum: number, v: Record<string, unknown>) => sum + ((v.voluntary_practice_sessions as number) || 0),
+    (sum, v) => sum + ((v.voluntary_practice_sessions as number) || 0),
     0
   );
 
-  // BECE readiness: average across all learners
   const totalRetained = learnerSummary.reduce(
-    (sum: number, l: Record<string, unknown>) => sum + ((l.topics_retained as number) || 0),
+    (sum, l) => sum + ((l.topics_retained as number) || 0),
     0
   );
   const totalFirstPass = learnerSummary.reduce(
-    (sum: number, l: Record<string, unknown>) => sum + ((l.topics_first_pass as number) || 0),
+    (sum, l) => sum + ((l.topics_first_pass as number) || 0),
     0
   );
   const beceScore =
-    totalTopics > 0 && totalLearners > 0
-      ? ((totalRetained / (totalTopics * totalLearners)) * 0.7 +
-          (totalFirstPass / (totalTopics * totalLearners)) * 0.3) *
-        100
+    totalLearners > 0
+      ? computeBeceReadiness(totalRetained, totalFirstPass, totalTopics * totalLearners)
       : 0;
 
-  // Heatmap data
   const heatmapLearners = enrichedLearners.map((l) => ({
     learner_id: l.learner_id as string,
     display_name: l.display_name as string,
@@ -171,25 +175,13 @@ export default function DemoDashboardPage() {
   }));
 
   const heatmapTopics = masteryOverview
-    .filter((m: Record<string, unknown>) => (m.class_id as string) === selectedClassId)
-    .map((m: Record<string, unknown>) => ({
+    .filter((m) => (m.class_id as string) === selectedClassId)
+    .map((m) => ({
       topic_id: m.topic_id as string,
       topic_name: m.topic_name as string,
       topic_code: m.topic_code as string,
     }));
 
-  const uniqueTopics = Array.from(new Map(heatmapTopics.map((t) => [t.topic_id, t])).values());
-
-  const [heatmapCellData, setHeatmapCellData] = useState<
-    { learner_id: string; topic_id: string; first_pass_pct: number; retained_mastered: boolean; first_pass_mastered: boolean; status: string }[]
-  >([]);
-
-  useEffect(() => {
-    if (!selectedClassId || enrichedLearners.length === 0) return;
-    setHeatmapCellData(getDemoHeatmapCells(selectedClassId));
-  }, [selectedClassId, enrichedLearners.length]);
-
-  // Show drill-down view
   if (drillDownLearnerId && drillDownData) {
     return (
       <LearnerDrillDown
@@ -204,50 +196,46 @@ export default function DemoDashboardPage() {
     );
   }
 
-  const selectedClassName = selectedClass?.name || '';
-  const selectedClassCode = selectedClass?.class_code || '';
-
   return (
     <div className="space-y-6">
-      <div className="mb-4 bg-teal-50 border border-teal-200 rounded-lg p-4 text-teal-800 text-sm">
-        <strong className="font-bold">👋 Welcome to the Demo Environment!</strong> You are viewing completely safe, realistic mock data. Feel free to explore—nothing you do here will affect a real account.
-      </div>
-
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900">Dashboard</h1>
-          <p className="text-gray-500">Welcome back, {teacher?.full_name}</p>
+          <h1 className="text-2xl font-bold text-navy-900">Dashboard</h1>
+          <p className="text-sm text-slate-500">Welcome back, {teacher.full_name}</p>
         </div>
-        <div className="flex items-center gap-3">
-          {classes.length > 0 && (
-            <div className="flex flex-col items-end">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-48">
               <Select
                 value={selectedClassId}
                 onChange={(e) => setSelectedClassId(e.target.value)}
                 options={classes.map((c) => ({ value: c.id, label: c.name }))}
               />
-              {selectedClassCode && (
-                <div className="text-sm font-medium mt-1 bg-teal-50 text-teal-700 px-3 py-1 rounded-full border border-teal-100">
-                  Class Code: <span className="font-bold tracking-widest">{selectedClassCode}</span>
-                </div>
-              )}
             </div>
-          )}
+            {selectedClass?.class_code && (
+              <div className="text-xs font-medium bg-indigo-50 text-indigo-700 px-3 py-2 rounded-lg border border-indigo-100 whitespace-nowrap">
+                Code: <span className="font-bold font-mono">{selectedClass.class_code}</span>
+              </div>
+            )}
+          </div>
           <ExportButton
             classId={selectedClassId}
             learners={enrichedLearners}
             classMastery={masteryOverview}
-            className_={selectedClassName}
+            className_={selectedClass?.name || 'demo-class'}
           />
         </div>
       </div>
 
-      {classes.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          No classes yet. Create a class to get started.
+      {loading ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <div key={n} className="h-24 bg-white border border-slate-200 rounded-xl animate-pulse" />
+            ))}
+          </div>
+          <div className="h-64 bg-white border border-slate-200 rounded-xl animate-pulse" />
         </div>
-      ) : loading ? (
-        <div className="text-center py-8 text-gray-500">Loading demo data...</div>
       ) : (
         <>
           <KpiCards
@@ -261,8 +249,12 @@ export default function DemoDashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <BECEReadiness
               score={beceScore}
-              retainedTopics={totalRetained}
-              firstPassTopics={totalFirstPass}
+              retainedTopics={totalLearners > 0 ? Math.round(totalRetained / totalLearners) : 0}
+              firstPassTopics={
+                totalLearners > 0
+                  ? Math.round(Math.max(0, totalFirstPass - totalRetained) / totalLearners)
+                  : 0
+              }
               totalTopics={totalTopics}
             />
             <AlertPanel alerts={alerts} onDismiss={handleDismissAlert} />
@@ -270,7 +262,7 @@ export default function DemoDashboardPage() {
 
           <MasteryHeatmap
             learners={heatmapLearners}
-            topics={uniqueTopics}
+            topics={heatmapTopics}
             cells={heatmapCellData}
             view={heatmapView}
             onViewChange={setHeatmapView}

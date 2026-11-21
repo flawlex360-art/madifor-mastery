@@ -1,5 +1,4 @@
-# Flawlex Mastery — Supabase Local Config
-# Used when running `supabase start` for local development
+# Madifor Mastery — Supabase Local Config
 
 project_id = "cylnczofknwcunxhifiy"
 [api]
@@ -12,7 +11,7 @@ max_rows = 1000
 [db]
 port = 54322
 shadow_port = 54320
-major_version = 15
+major_version = 17
 
 [studio]
 enabled = true
@@ -20,6 +19,6 @@ port = 54323
 
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://localhost:3000"]
+site_url = "http://localhost:5180"
+additional_redirect_urls = ["https://localhost:5180"]
 jwt_expiry = 3600

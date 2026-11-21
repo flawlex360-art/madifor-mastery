@@ -4,19 +4,25 @@ import TopicCard from '@/components/curriculum/TopicCard';
 import ReviewBadge from '@/components/learner/ReviewBadge';
 import { DEMO_TOPICS, DEMO_QUESTIONS } from '../demo/demoData';
 import { Search, ChevronDown, ChevronRight, Clock } from 'lucide-react';
+import { toast } from '@/stores/toastStore';
+
+const STRAND_GROUPS = Array.from(new Set(DEMO_TOPICS.map((t) => t.strand)));
 
 export default function DemoLearnerHomePage() {
   const navigate = useNavigate();
   const [topicSearch, setTopicSearch] = useState('');
-  const [expandedStrands, setExpandedStrands] = useState<Set<string>>(new Set(['SCI-B8']));
+  const [expandedStrands, setExpandedStrands] = useState<Set<string>>(new Set(STRAND_GROUPS));
 
-  // Generate some stable mock mastery data for the demo learner
   const getMockMastery = (topicId: string) => {
-    switch(topicId) {
-      case 't1': return { pct: 85, status: 'first_pass_mastered' as const };
-      case 't2': return { pct: 45, status: 'in_progress' as const };
-      case 't3': return { pct: 0, status: 'not_started' as const };
-      default: return { pct: 0, status: 'not_started' as const };
+    switch (topicId) {
+      case 't1':
+        return { pct: 85, status: 'first_pass_mastered' as const };
+      case 't2':
+        return { pct: 52, status: 'in_progress' as const };
+      case 't3':
+        return { pct: 88, status: 'retained_mastered' as const };
+      default:
+        return { pct: 0, status: 'not_started' as const };
     }
   };
 
@@ -24,56 +30,65 @@ export default function DemoLearnerHomePage() {
     navigate(`/demo-learner/assessment/${topicId}`, { state: { topicName } });
   };
 
+  const qLower = topicSearch.trim().toLowerCase();
   const filteredTopics = DEMO_TOPICS.filter(
-    (t) => t.name.toLowerCase().includes(topicSearch.toLowerCase()) || t.code.toLowerCase().includes(topicSearch.toLowerCase())
+    (t) =>
+      !qLower ||
+      t.name.toLowerCase().includes(qLower) ||
+      t.code.toLowerCase().includes(qLower) ||
+      t.strand.toLowerCase().includes(qLower)
   );
+
+  const visibleStrands = Array.from(new Set(filteredTopics.map((t) => t.strand)));
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-zinc-900">
-              Welcome, Abigail!
-            </h1>
-            <span className="px-3 py-1 text-sm font-bold rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200">
-              B8
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold text-navy-900">Welcome, Abigail</h1>
+            <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+              B8 (JHS 2)
             </span>
           </div>
-          <p className="text-gray-500">
-            Choose a topic to start learning (Demo Mode)
+          <p className="text-sm text-slate-500 mt-0.5">
+            Select a topic below to try a 5-question sample Science quiz
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <ReviewBadge count={2} onClick={() => {
-            alert("In the real app, this would start a spaced-repetition review session!");
-          }} />
-        </div>
+
+        <ReviewBadge
+          count={2}
+          onClick={() =>
+            toast.info('In a signed-in learner account, this launches your due spaced-repetition reviews.')
+          }
+        />
       </div>
 
       {/* Topic search */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
-          placeholder="Search topics by name or code..."
+          placeholder="Search topics by name, strand, or code..."
           value={topicSearch}
           onChange={(e) => setTopicSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-2.5 text-sm border border-zinc-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900/20 focus:border-zinc-900"
+          className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl bg-white text-navy-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
         />
       </div>
 
-      {/* Recent topics */}
+      {/* Recently practiced */}
       {!topicSearch && (
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Clock className="w-4 h-4 text-gray-400" />
-            <h2 className="text-sm font-medium text-gray-500">Recently Practiced</h2>
+          <div className="flex items-center gap-2 mb-2.5">
+            <Clock className="w-4 h-4 text-slate-400" />
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Recently Practiced
+            </h2>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {[DEMO_TOPICS[0], DEMO_TOPICS[1]].map((topic) => {
               const mastery = getMockMastery(topic.id);
-              const qCount = DEMO_QUESTIONS.filter(q => q.topic_id === topic.id).length || 5;
+              const qCount = DEMO_QUESTIONS.filter((q) => q.topic_id === topic.id).length;
               return (
                 <TopicCard
                   key={`recent-${topic.id}`}
@@ -90,56 +105,67 @@ export default function DemoLearnerHomePage() {
         </div>
       )}
 
-      {/* All Topics */}
-      <div className="space-y-2">
-        {Array.from(new Set(filteredTopics.map(t => t.code.split('.').slice(0, 2).join('.')))).map(strandCode => {
-          const strandTopics = filteredTopics.filter(t => t.code.startsWith(strandCode));
-          const strandName = 'Science Sub-Strand';
-          
-          return (
-            <div key={strandCode} className="border rounded-xl overflow-hidden">
-              <button
-                onClick={() => {
-                  setExpandedStrands(prev => {
-                    const next = new Set(prev);
-                    next.has(strandCode) ? next.delete(strandCode) : next.add(strandCode);
-                    return next;
-                  });
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 bg-zinc-50 hover:bg-zinc-100 transition-colors"
-              >
-                {expandedStrands.has(strandCode) ? (
-                  <ChevronDown className="w-5 h-5 text-zinc-600" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-zinc-600" />
+      {/* Topics grouped by strand */}
+      <div className="space-y-3">
+        {visibleStrands.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-500">
+            No topics match &ldquo;{topicSearch}&rdquo;.
+          </div>
+        ) : (
+          visibleStrands.map((strandName) => {
+            const strandTopics = filteredTopics.filter((t) => t.strand === strandName);
+            const isExpanded = expandedStrands.has(strandName) || Boolean(topicSearch);
+
+            return (
+              <div key={strandName} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExpandedStrands((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(strandName)) next.delete(strandName);
+                      else next.add(strandName);
+                      return next;
+                    });
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 bg-slate-50/70 hover:bg-slate-100/70 transition-colors"
+                >
+                  {isExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-slate-500" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-slate-500" />
+                  )}
+                  <div className="text-left">
+                    <p className="font-semibold text-navy-900">{strandName}</p>
+                    <p className="text-xs text-slate-500">
+                      {strandTopics.length} topic{strandTopics.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-slate-100">
+                    {strandTopics.map((topic) => {
+                      const mastery = getMockMastery(topic.id);
+                      const qCount = DEMO_QUESTIONS.filter((q) => q.topic_id === topic.id).length;
+                      return (
+                        <TopicCard
+                          key={topic.id}
+                          name={topic.name}
+                          code={topic.code}
+                          questionCount={qCount}
+                          masteryPct={mastery.pct}
+                          status={mastery.status}
+                          onClick={() => startAssessment(topic.id, topic.name)}
+                        />
+                      );
+                    })}
+                  </div>
                 )}
-                <div className="text-left">
-                  <p className="font-semibold text-zinc-900">{strandName}</p>
-                  <p className="text-xs text-gray-500">{strandTopics.length} topics</p>
-                </div>
-              </button>
-              {expandedStrands.has(strandCode) && (
-                <div className="p-4 space-y-2">
-                  {strandTopics.map(topic => {
-                    const mastery = getMockMastery(topic.id);
-                    const qCount = DEMO_QUESTIONS.filter(q => q.topic_id === topic.id).length || 5;
-                    return (
-                      <TopicCard
-                        key={topic.id}
-                        name={topic.name}
-                        code={topic.code}
-                        questionCount={qCount}
-                        masteryPct={mastery.pct}
-                        status={mastery.status}
-                        onClick={() => startAssessment(topic.id, topic.name)}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

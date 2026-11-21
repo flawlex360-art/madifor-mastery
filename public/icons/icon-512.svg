@@ -1,4 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="80" fill="#1B2A4A"/>
-  <text x="256" y="320" text-anchor="middle" font-family="system-ui" font-weight="bold" font-size="256" fill="#2DD4BF">F</text>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1B2A4A"/>
+      <stop offset="100%" stop-color="#312E81"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <text x="256" y="336" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="264" fill="#FFFFFF">M</text>
+  <circle cx="388" cy="124" r="32" fill="#818CF8"/>
 </svg>

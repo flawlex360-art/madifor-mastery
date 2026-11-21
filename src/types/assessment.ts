@@ -1,4 +1,4 @@
-// Flawlex Mastery — Assessment Types
+// Madifor Mastery — Assessment Types
 
 import type { ReviewStage, AttemptType, MasteryStatus } from '@/config/assessment';
 
@@ -23,7 +23,7 @@ export interface ReviewEntry {
   question_id: string;
   topic_id: string;
   stage: ReviewStage;
-  due_at: string;
+  due_at: string | null;
   added_at: string;
   last_reviewed_at: string | null;
 }
@@ -46,13 +46,13 @@ export interface SelfPracticeSession {
   id: string;
   learner_id: string;
   topic_id: string;
+  practice_class_level: 'B7' | 'B8' | 'B9' | null;
   questions_attempted: number;
   questions_correct: number;
   started_at: string;
   ended_at: string | null;
 }
 
-// Session queue item: a question with session metadata
 export interface SessionQuestion {
   question_id: string;
   topic_id: string;
@@ -60,7 +60,6 @@ export interface SessionQuestion {
   session_question_index: number;
 }
 
-// Assessment session state
 export interface AssessmentSession {
   session_id: string;
   learner_id: string;
