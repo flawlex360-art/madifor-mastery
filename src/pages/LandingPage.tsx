@@ -242,14 +242,6 @@ export default function LandingPage() {
             variants={stagger}
             className="max-w-3xl mx-auto"
           >
-            <motion.div
-              variants={fadeUp}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-xs sm:text-sm font-semibold text-indigo-700 mb-6"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>BECE Integrated Science Mastery Platform</span>
-            </motion.div>
-
             <motion.h1
               variants={fadeUp}
               className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.08] mb-6 text-navy-900"
@@ -323,7 +315,7 @@ export default function LandingPage() {
             variants={stagger}
             className="grid grid-cols-2 md:grid-cols-4 gap-8"
           >
-            <AnimatedStat value="1800" suffix="+" label="Curated Questions" />
+            <AnimatedStat value="8600" suffix="+" label="Curated Questions" />
             <AnimatedStat value="86" label="Curriculum Topics" />
             <AnimatedStat value="5" label="Science Strands" />
             <AnimatedStat value="3" label="Class Levels (B7–B9)" />

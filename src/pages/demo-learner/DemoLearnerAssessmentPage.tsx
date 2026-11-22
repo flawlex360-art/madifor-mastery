@@ -81,7 +81,7 @@ export default function DemoLearnerAssessmentPage() {
           <ul className="space-y-2.5 text-sm">
             <li className="flex items-center gap-2.5 text-navy-800">
               <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-              1,800+ NaCCA BECE Science questions across B7–B9
+              8,600+ NaCCA BECE Science questions across B7–B9
             </li>
             <li className="flex items-center gap-2.5 text-navy-800">
               <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
